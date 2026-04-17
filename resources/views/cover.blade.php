@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIPADU - Kota Bengkulu</title>
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Poppins:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Paytone+One&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -20,15 +20,38 @@
             justify-content: center;
             font-family: 'Poppins', sans-serif;
             margin: 0;
+            overflow-x: hidden;
         }
 
-        /* Font khusus untuk judul agar lebih lucu */
+        /* Font SIPADU: Paytone One dengan ukuran awal */
         .brand-font {
-            font-family: 'Fredoka', sans-serif;
+            font-family: 'Paytone One', sans-serif;
+            text-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+
+        /* Animasi Floating untuk Logo */
+        .float-animation {
+            animation: floating 3s ease-in-out infinite;
+        }
+
+        .float-delay {
+            animation: floating 3s ease-in-out infinite;
+            animation-delay: 1.5s;
+        }
+
+        @keyframes floating {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-12px) rotate(2deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
         }
 
         .btn-shadow {
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-glow:hover {
+            box-shadow: 0 0 20px rgba(66, 153, 225, 0.5);
+            transform: translateY(-3px);
         }
 
         .fade-in {
@@ -45,7 +68,7 @@
             text-decoration: underline !important;
         }
 
-        /* Warna biru tua spesifik untuk "SI" */
+        /* Navy custom untuk 'SI' */
         .text-navy-custom {
             color: #19064f;
         }
@@ -56,8 +79,8 @@
     <div class="max-w-4xl w-full text-center text-white fade-in">
         
         <div class="mb-5 flex justify-center items-center gap-4 md:gap-2">
-            <img src="{{ asset('image/LOGOKOMINFO.png') }}" class="drop-shadow-2xl object-contain" width="125" alt="Logo Kominfo">
-            <img src="{{ asset('image/pemkot.png') }}" class="drop-shadow-2xl object-contain" width="90" alt="Logo Pemkot">
+            <img src="{{ asset('image/LOGOKOMINFO.png') }}" class="drop-shadow-2xl object-contain float-animation" width="125" alt="Logo Kominfo">
+            <img src="{{ asset('image/pemkot.png') }}" class="drop-shadow-2xl object-contain float-delay" width="90" alt="Logo Pemkot">
         </div>
 
         <h1 class="brand-font text-7xl md:text-9xl font-bold tracking-tight mb-2 drop-shadow-lg">
@@ -75,16 +98,16 @@
         </p>
 
         <div class="flex flex-col gap-5 items-center">
-            <a href="/login" class="w-full max-w-md py-4 bg-[#2b6cb0] hover:bg-[#2c5282] transition-all duration-300 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 btn-shadow hover:-translate-y-1">
+            <a href="/login" class="w-full max-w-md py-4 bg-[#2b6cb0] hover:bg-[#2c5282] transition-all duration-300 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 btn-shadow btn-glow">
                 <i class="fas fa-key text-sm"></i> Login
             </a>
 
-            <a href="https://bkpsdmpangkat2023.carrd.co/" target="_blank" rel="noopener noreferrer" class="w-full max-w-md py-4 bg-[#802c6e] hover:bg-[#6b225c] transition-all duration-300 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 btn-shadow hover:-translate-y-1">
+            <a href="https://bkpsdmpangkat2023.carrd.co/" target="_blank" rel="noopener noreferrer" class="w-full max-w-md py-4 bg-[#802c6e] hover:bg-[#6b225c] transition-all duration-300 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 btn-shadow btn-glow">
                 <i class="fas fa-arrow-up text-sm"></i> Pengusulan Kenaikan Pangkat
             </a>
         </div>
 
-        <div class="mt-5 leading-relaxed">
+        <div class="mt-8 leading-relaxed opacity-80">
             <p class="text-white/50 small" style="font-size: 0.75rem; letter-spacing: 0.05rem;">
                 © 2026 Kominfo Kota Bengkulu
                 <br>
