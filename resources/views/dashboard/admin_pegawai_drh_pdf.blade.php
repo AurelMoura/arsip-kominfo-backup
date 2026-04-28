@@ -6,23 +6,8 @@
     <title>Print DRH - {{ $user->name }}</title>
     <style>
         @page {
-            size: A4;
-            margin: 0;
-            margin-top: 2mm;
-        }
-
-        @page :first {
-            margin: 0;
-            margin-top: 2mm;
-        }
-
-        /* Adjust margins for legal paper size */
-        @media print {
-            @page {
-                size: A4;
-                margin: 0;
-                margin-top: 0mm;
-            }
+            size: auto;
+            margin: 20mm 14mm 14mm 14mm;
         }
 
         * {
@@ -41,17 +26,18 @@
 
         .page {
             width: 210mm;
-            min-height: 297mm;
+            max-width: 210mm;
+            min-height: auto;
             margin: 0 auto;
-            margin-top: 80px;
+            margin-top: 20px;
             background: #ffffff;
-            padding: 0;
+            padding: 20mm 14mm 14mm 14mm;
+            box-sizing: border-box;
         }
 
         .sheet {
-            padding: 14mm;
+            padding: 0;
             margin: 0;
-            padding-top: 4mm;
         }
 
         .header-table {
@@ -157,7 +143,7 @@
             border-radius: 10px;
             overflow: hidden;
             background: #dbeafe;
-            border: 2px solid #2563eb;
+            border: 1px solid #1f2937;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -394,9 +380,7 @@
                 min-height: auto;
             }
 
-            .sheet {
-                padding: 0;
-            }
+            .sheet { padding: 0; }
 
             .control-buttons,
             .paper-selector {
@@ -509,7 +493,25 @@
                         <div class="profile-photo">
                             <div class="photo-frame">
                                 @if($pegawai?->foto_profil)
-                                    <img src="{{ Storage::disk('public')->url($pegawai->foto_profil) }}" alt="Foto Profil">
+                                    @php
+                                        $fotoBase64 = null;
+                                        if (\Illuminate\Support\Facades\Storage::disk('public')->exists($pegawai->foto_profil)) {
+                                            $fotoPath = \Illuminate\Support\Facades\Storage::disk('public')->path($pegawai->foto_profil);
+                                            $fotoType = @mime_content_type($fotoPath) ?: 'image/jpeg';
+                                            $fotoData = @file_get_contents($fotoPath);
+                                            if ($fotoData !== false) {
+                                                $fotoBase64 = 'data:' . $fotoType . ';base64,' . base64_encode($fotoData);
+                                            }
+                                        }
+                                    @endphp
+                                    @if($fotoBase64)
+                                        <!-- <img src="{{ $fotoBase64 }}" alt="Foto Profil"> -->
+                                         <img src="{{ $fotoBase64 }}" 
+                                                alt="Foto Profil" 
+                                                style="width: 120px; height: 120px; object-fit: cover; border-radius: 10px;">
+                                    @else
+                                        {{ strtoupper(substr($user->name, 0, 1)) }}
+                                    @endif
                                 @else
                                     {{ strtoupper(substr($user->name, 0, 1)) }}
                                 @endif
@@ -537,6 +539,7 @@
                         <tr><td class="label">Eselon Jabatan</td><td class="separator">:</td><td>{{ $eselonLabel }}</td></tr>
                         @endif
                         <tr><td class="label">Alamat Domisili</td><td class="separator">:</td><td>{{ $pegawai->alamat ?? '-' }}</td></tr>
+                        <tr><td class="label">Alamat Sesuai KTP</td><td class="separator">:</td><td>{{ $pegawai->alamat_ktp ?? '-' }}</td></tr>
                     </table>
                 </div>
 
@@ -806,6 +809,8 @@
                         <tr><td class="label">Nomor KTP</td><td class="separator">:</td><td>{{ $legal['nik_ktp'] ?? '-' }}</td></tr>
                         <tr><td class="label">Nomor NPWP</td><td class="separator">:</td><td>{{ $legal['nomor_npwp'] ?? '-' }}</td></tr>
                         <tr><td class="label">Nomor BPJS</td><td class="separator">:</td><td>{{ $legal['nomor_bpjs'] ?? '-' }}</td></tr>
+                        <tr><td class="label">Nomor Kartu Keluarga (KK)</td><td class="separator">:</td><td>{{ $legal['nomor_kk'] ?? '-' }}</td></tr>
+                    
                     </table>
                 </div>
 
@@ -831,6 +836,7 @@
             const { width, height } = getPaperDimensions(size);
             
             pageContent.style.width = width + 'mm';
+            pageContent.style.maxWidth = width + 'mm';
             pageContent.style.minHeight = height + 'mm';
             
             // Update all sheet widths for consistency
@@ -862,6 +868,12 @@
             const element = document.getElementById('pageContent');
             const btn = document.getElementById('btn-download');
             const originalContent = btn.innerHTML;
+            @php
+                $safeUserName = preg_replace('/[^A-Za-z0-9_]/', '_', str_replace(' ', '_', $user->name ?? 'Pegawai'));
+                $safePegawaiId = preg_replace('/[^A-Za-z0-9_]/', '_', (string) ($user->pegawai_id ?? 'UNKNOWN'));
+                $drhFileName = 'DRH_' . $safeUserName . '_' . $safePegawaiId . '.pdf';
+            @endphp
+            const drhFileName = @json($drhFileName);
             
             // Show loading state
             btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> Memproses...`;
@@ -878,10 +890,24 @@
             }
 
             const opt = {
-                margin: [0, 0, 0, 0],
-                filename: 'DRH_{{ str_replace(" ", "_", $user->name) }}_' + new Date().getTime() + '.pdf',
+                margin: 0,
+                filename: drhFileName,
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: true },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    allowTaint: true,
+                    onclone: function(clonedDoc) {
+                        const clonedPage = clonedDoc.getElementById('pageContent');
+                        if (clonedPage) {
+                            clonedPage.style.margin = '0';
+                            clonedPage.style.width = '100%';
+                            clonedPage.style.maxWidth = '100%';
+                            clonedPage.style.float = 'none';
+                        }
+                    }
+                },
                 jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
                 pagebreak: { mode: ['css', 'legacy'] }
             };
@@ -893,7 +919,7 @@
                 console.error(err);
                 btn.innerHTML = originalContent;
                 btn.disabled = false;
-                alert('Terjadi kesalahan saat membuat PDF: ' + (err.message || 'Silakan coba lagi.'));
+                showToast('Terjadi kesalahan saat membuat PDF: ' + (err.message || 'Silakan coba lagi.'), 'error');
             });
         }
 
@@ -920,16 +946,11 @@
                 to { transform: rotate(360deg); }
             }
             
-            /* Print styles untuk kertas legal dan variasi lain */
+            /* Print styles: adapt to selected paper with 2cm top margin */
             @media print {
                 @page {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                }
-                
-                @page :first {
-                    margin: 0 !important;
-                    padding: 0 !important;
+                    size: auto !important;
+                    margin: 20mm 14mm 14mm 14mm !important;
                 }
                 
                 body {
@@ -939,14 +960,16 @@
                 
                 .page {
                     width: 100% !important;
+                    max-width: 100% !important;
                     margin: 0 !important;
                     padding: 0 !important;
                     min-height: auto !important;
-                    margin-top: 0 !important;
                 }
                 
+                /* @page margin handles spacing for print; remove CSS padding to avoid double margins */
+                
                 .sheet {
-                    padding: 5mm 14mm 14mm 14mm !important;
+                    padding: 0 !important;
                     margin: 0 !important;
                     page-break-after: always;
                 }

@@ -81,10 +81,14 @@
         .modal-content { border-radius: 30px; border: none; padding: 10px; }
         .modal-header { border-radius: 20px 20px 0 0; }
 
-        @media (max-width: 991px) {
-            .sidebar { width: 80px; }
-            .sidebar .lh-1, .sidebar .text-white, .sidebar small, .sidebar span { display: none; }
-            .main-content { margin-left: 80px; padding: 25px; }
+        @media (max-width: 991.98px) {
+            .main-content { padding: 16px !important; padding-top: calc(56px + 16px) !important; }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+            .modal-dialog { margin: 8px !important; max-width: calc(100vw - 16px) !important; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            h1 { font-size: 1.5rem !important; }
         }
     </style>
 @endpush
@@ -131,6 +135,9 @@
                     </label>
                     <input type="file" id="inputFotoProfil" accept="image/*" class="d-none">
                     <div id="foto-upload-status" class="mt-2" style="font-size: 11px;"></div>
+                    <div id="foto-upload-status" class="mt-2 text-muted" style="font-size: 11px; line-height: 1.4;">
+    *Rekomendasi: Gunakan foto rasio 1:1 (Persegi) <br> agar profil Anda terlihat proporsional.
+</div>
                 </div>
 
                 <!-- Tabel Informasi -->

@@ -26,56 +26,13 @@
             overflow-x: hidden;
         }
 
-        /* Sidebar Styles (Consistent with other pages) */
-        .sidebar {
-            width: 280px;
-            height: 100vh;
-            background: var(--sidebar-color);
-            position: fixed;
-            color: white;
-            z-index: 100;
-            box-shadow: 10px 0 30px rgba(0,0,0,0.05);
-        }
-
-        .nav-link { 
-            color: #94a3b8; 
-            margin: 8px 15px; 
-            border-radius: 12px; 
-            transition: 0.3s all cubic-bezier(0.4, 0, 0.2, 1); 
-            padding: 12px 15px;
-            display: flex;
-            align-items: center;
-            text-decoration: none;
-        }
-
-        .nav-link i { font-size: 1.2rem; }
-
-        .nav-link.active { 
-            background: linear-gradient(135deg, var(--primary-blue), #3b82f6); 
-            color: white; 
-            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
-        }
-
-        .nav-link:hover:not(.active) { 
-            background: rgba(255,255,255,0.05); 
-            color: white; 
-            transform: translateX(5px);
-        }
-
-        .user-profile-nav {
-            background: rgba(255,255,255,0.05);
-            border-radius: 15px;
-            padding: 12px;
-            margin: 0 15px 30px 15px;
-        }
-
         /* Main Content Centering */
         .main-content {
-            margin-left: 280px;
+            margin-left: 260px; /* Sesuai margin sidebar global */
             min-height: 100vh;
             display: flex;
-            align-items: center; /* Vertical Center */
-            justify-content: center; /* Horizontal Center */
+            align-items: center; 
+            justify-content: center; 
             padding: 40px;
             background-image: 
                 radial-gradient(at 0% 0%, rgba(67, 97, 238, 0.05) 0px, transparent 50%),
@@ -87,7 +44,6 @@
             max-width: 580px;
         }
 
-        /* Modern Glassmorphism Card */
         .form-card {
             background: var(--glass-bg);
             backdrop-filter: blur(10px);
@@ -98,11 +54,8 @@
             transition: transform 0.3s ease;
         }
 
-        .form-card:hover {
-            transform: translateY(-5px);
-        }
+        .form-card:hover { transform: translateY(-5px); }
 
-        /* Interactive Inputs */
         .form-control {
             border: 2px solid #e2e8f0;
             padding: 14px 20px;
@@ -118,12 +71,6 @@
             transform: scale(1.01);
         }
 
-        .form-label {
-            margin-left: 5px;
-            letter-spacing: 0.5px;
-        }
-
-        /* Modern Button */
         .btn-submit {
             background: linear-gradient(135deg, var(--primary-blue), #3b82f6);
             border: none;
@@ -133,19 +80,16 @@
             letter-spacing: 0.5px;
             transition: all 0.3s ease;
             box-shadow: 0 10px 15px -3px rgba(67, 97, 238, 0.3);
+            color: white;
         }
 
         .btn-submit:hover {
             transform: translateY(-2px);
             box-shadow: 0 20px 25px -5px rgba(67, 97, 238, 0.4);
             filter: brightness(1.1);
+            color: white;
         }
 
-        .btn-submit:active {
-            transform: scale(0.98);
-        }
-
-        /* Icon Animation */
         .icon-box {
             width: 56px;
             height: 56px;
@@ -157,11 +101,7 @@
             margin-bottom: 20px;
         }
 
-        /* Input Icon Wrapper */
-        .input-group-custom {
-            position: relative;
-        }
-
+        .input-group-custom { position: relative; }
         .input-group-custom i {
             position: absolute;
             right: 20px;
@@ -169,12 +109,15 @@
             transform: translateY(-50%);
             color: #94a3b8;
             cursor: pointer;
+            z-index: 10;
         }
 
-        /* Responsive Sidebar */
         @media (max-width: 991px) {
-            .sidebar { transform: translateX(-100%); }
-            .main-content { margin-left: 0; }
+            .main-content { 
+                margin-left: 0; 
+                padding: 16px;
+                padding-top: calc(56px + 16px);
+            }
         }
     </style>
 </head>
@@ -185,10 +128,10 @@
 <div class="main-content">
     <div class="container-wrapper animate__animated animate__fadeInUp">
         
-        <div class="text-center mb-5">
+        <!-- <div class="text-center mb-5">
             <h2 class="fw-bold text-dark mb-2">Tambah Admin Baru</h2>
             <p class="text-muted">Lengkapi formulir di bawah untuk menambah pengelola sistem.</p>
-        </div>
+        </div> -->
 
         <div class="form-card">
             <div class="d-flex flex-column align-items-center text-center mb-4">
@@ -199,13 +142,13 @@
                 <span class="badge bg-light text-primary border border-primary-subtle px-3 py-2 rounded-pill">Privilege: Administrator</span>
             </div>
 
-            <form action="{{ url('/superadmin/store-admin') }}" method="POST" id="adminForm" onsubmit="return validateAdminNip()">
+            <form action="{{ url('/superadmin/store-admin') }}" method="POST" id="adminForm">
                 @csrf
 
                 <div class="mb-4">
-                    <label class="form-label fw-bold text-secondary text-uppercase small">username (18digit) </label>
+                    <label class="form-label fw-bold text-secondary text-uppercase small">Username (18 Digit NIP)</label>
                     <input type="text" name="nip" id="adminNipInput" class="form-control rounded-4 @error('nip') is-invalid @enderror"
-                           placeholder="Masukkan 18 angka" value="{{ old('nip') }}" required maxlength="18" inputmode="numeric" pattern="\d*" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                           placeholder="Masukkan 18 angka" value="{{ old('nip') }}" required maxlength="18" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                     @error('nip')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
@@ -214,7 +157,7 @@
                 <div class="mb-4">
                     <label class="form-label fw-bold text-secondary text-uppercase small">Nama Lengkap</label>
                     <input type="text" name="nama_lengkap" class="form-control rounded-4 @error('nama_lengkap') is-invalid @enderror"
-                           placeholder="Masukkan nama lengkap beserta gelar" value="{{ old('nama_lengkap') }}" required>
+                           placeholder="Masukkan nama " value="{{ old('nama_lengkap') }}" required>
                     @error('nama_lengkap')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
@@ -224,9 +167,11 @@
                     <label class="form-label fw-bold text-secondary text-uppercase small">Password</label>
                     <div class="input-group-custom">
                         <input type="password" name="password" id="password" class="form-control rounded-4 @error('password') is-invalid @enderror"
-                               placeholder="Min. 6 karakter" required minlength="6">
+                               placeholder="Min. 8 karakter" required minlength="8"
+                               pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}">
                         <i class="bi bi-eye" id="togglePassword"></i>
                     </div>
+                    <small class="text-muted d-block mt-2">Gunakan minimal 8 karakter dengan huruf besar, huruf kecil, angka, dan simbol (@$!%*?&).</small>
                     @error('password')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
@@ -236,7 +181,7 @@
                     <label class="form-label fw-bold text-secondary text-uppercase small">Konfirmasi Password</label>
                     <div class="input-group-custom">
                         <input type="password" name="password_confirmation" id="password_confirm" class="form-control rounded-4"
-                               placeholder="Ulangi password" required minlength="6">
+                               placeholder="Ulangi password" required minlength="8">
                         <i class="bi bi-eye" id="toggleConfirmPassword"></i>
                     </div>
                 </div>
@@ -244,10 +189,11 @@
                 <button type="submit" class="btn btn-primary btn-submit w-100 mt-3">
                     <i class="bi bi-person-plus-fill me-2"></i> Buat Akun Admin
                 </button>
+            </form>
         </div>
 
         <div class="text-center mt-4">
-            <a href="{{ url('/superadmin/dashboard') }}" class="text-decoration-none text-muted small">
+            <a href="{{ url('/dashboard') }}" class="text-decoration-none text-muted small">
                 <i class="bi bi-arrow-left me-1"></i> Kembali ke Dashboard
             </a>
         </div>
@@ -257,25 +203,53 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
+    function showLocalToast(message, type = 'warning') {
+        if (typeof window.showToast === 'function') {
+            window.showToast(message, type);
+            return;
+        }
+
+        const existingToast = document.getElementById('localToastMessage');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
+        const colors = {
+            success: '#16a34a',
+            error: '#dc2626',
+            warning: '#d97706',
+            info: '#2563eb'
+        };
+
+        const toast = document.createElement('div');
+        toast.id = 'localToastMessage';
+        toast.textContent = message;
+        toast.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;padding:12px 16px;border-radius:10px;color:#fff;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,.15);background:${colors[type] || colors.info};opacity:0;transform:translateY(-10px);transition:all .2s ease;`;
+        document.body.appendChild(toast);
+
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        });
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 220);
+        }, 2500);
+    }
+
+    // Validasi NIP
     function validateAdminNip() {
         const nip = document.getElementById('adminNipInput').value.trim();
         if (nip.length !== 18 || !/^\d{18}$/.test(nip)) {
-            let toast = document.getElementById('nipToast');
-            if (!toast) {
-                toast = document.createElement('div');
-                toast.id = 'nipToast';
-                toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:9999;padding:12px 24px;border-radius:12px;background:#dc3545;color:#fff;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.15);opacity:0;transition:opacity .3s;';
-                document.body.appendChild(toast);
-            }
-            toast.textContent = 'NIP harus tepat 18 digit angka.';
-            toast.style.opacity = '1';
-            setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+            showLocalToast('Username/NIP harus tepat 18 digit angka.', 'warning');
             return false;
         }
         return true;
     }
 
-    // Fitur Interaktif: Toggle Show/Hide Password
+    // Toggle Show/Hide Password
     const setupToggle = (inputId, toggleId) => {
         const input = document.getElementById(inputId);
         const toggle = document.getElementById(toggleId);
@@ -287,35 +261,29 @@
             this.classList.toggle('bi-eye-slash');
         });
     };
-            </form>
-        </div>
-
-        <div class="text-center mt-4">
-            <a href="{{ url('/superadmin/dashboard') }}" class="text-decoration-none text-muted small">
-                <i class="bi bi-arrow-left me-1"></i> Kembali ke Dashboard
-            </a>
-        </div>
-    </div>
-</div>
-
-<!-- Fallback: pastikan modal selalu di-append ke body -->
-<script>
-window.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.modal').forEach(function(modal) {
-    if (modal.parentNode !== document.body) document.body.appendChild(modal);
-  });
-});
-</script>
 
     setupToggle('password', 'togglePassword');
     setupToggle('password_confirm', 'toggleConfirmPassword');
 
-    // Animasi sederhana saat submit
-    document.getElementById('adminForm').onsubmit = function() {
+    // Animasi Loading & Validasi saat Submit
+    document.getElementById('adminForm').onsubmit = function(e) {
+        if (!validateAdminNip()) {
+            e.preventDefault();
+            return false;
+        }
+        
         const btn = this.querySelector('.btn-submit');
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Memproses...';
         btn.style.opacity = '0.7';
+        btn.style.pointerEvents = 'none';
     };
+
+    // Modal fallback
+    window.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.modal').forEach(function(modal) {
+            if (modal.parentNode !== document.body) document.body.appendChild(modal);
+        });
+    });
 </script>
 </body>
 </html>

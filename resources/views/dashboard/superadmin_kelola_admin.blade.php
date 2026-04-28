@@ -120,7 +120,11 @@
 
         @media (max-width: 991px) {
             .sidebar { transform: translateX(-100%); }
-            .main-content { margin-left: 0; padding: 20px; }
+            .main-content { 
+                margin-left: 0; 
+                padding: 16px;
+                padding-top: calc(56px + 16px);
+            }
         }
     </style>
 </head>
@@ -201,11 +205,12 @@
                                         <p class="text-muted mb-3">Ubah password untuk <strong>{{ $admin->name }}</strong></p>
                                         <div class="mb-3">
                                             <label class="form-label fw-bold text-secondary text-uppercase small">Password Baru</label>
-                                            <input type="password" name="password" class="form-control rounded-3" placeholder="Min. 6 karakter" required minlength="6">
+                                            <input type="password" name="password" class="form-control rounded-3" placeholder="Min. 8 karakter + A-Z, a-z, 0-9, @$!%*?&" required minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}">
+                                            <small class="text-muted d-block mt-2">Wajib minimal 8 karakter dan mengandung huruf besar, huruf kecil, angka, serta simbol (@$!%*?&).</small>
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label fw-bold text-secondary text-uppercase small">Konfirmasi Password</label>
-                                            <input type="password" name="password_confirmation" class="form-control rounded-3" placeholder="Ulangi password" required minlength="6">
+                                            <input type="password" name="password_confirmation" class="form-control rounded-3" placeholder="Ulangi password" required minlength="8">
                                         </div>
                                     </div>
                                     <div class="modal-footer border-0 pt-0">

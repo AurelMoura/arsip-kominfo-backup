@@ -24,6 +24,27 @@ class MasterAgamaController extends Controller
         return view('dashboard.master.agama', compact('agamas'));
     }
 
+    public function showAsn($id)
+    {
+        $agama = Agama::withCount('pegawais')
+            ->with(['pegawais' => function ($q) {
+                $q->with('user:id,pegawai_id')
+                    ->orderBy('nama_lengkap')
+                    ->select(['id', 'nama_lengkap', 'status_pegawai', 'foto_profil', 'nama_agama']);
+            }])
+            ->findOrFail($id);
+
+        return view('dashboard.master.asn_detail', [
+            'backUrl' => url('/admin/master/agama'),
+            'heading' => 'Detail ASN Agama',
+            'subHeading' => 'Daftar ASN dengan agama ' . $agama->nama,
+            'referenceName' => $agama->nama,
+            'referenceType' => 'Agama',
+            'asnCount' => $agama->pegawais_count,
+            'asns' => $agama->pegawais,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $request->validate(['nama' => 'required|string|max:255']);

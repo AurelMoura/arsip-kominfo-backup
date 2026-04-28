@@ -39,16 +39,45 @@ class PegawaiController extends Controller
     /**
      * Menampilkan Daftar Pegawai (Hanya untuk Role Admin)
      */
-    public function index()
+    public function index(Request $request)
     {
         if (!Session::has('role') || !in_array(Session::get('role'), ['admin', 'superadmin'])) {
             return redirect('/login');
         }
 
-        $pegawai = User::where('role', 'pegawai')->with('pegawai')->get();
+        $status = $request->input('status', 'aktif'); // Default ke 'aktif'
+        
+        if ($status === 'nonaktif') {
+            // Tampilkan hanya pegawai dengan akun non-aktif
+            $pegawai = User::where('role', 'pegawai')
+                ->where('is_active', false)
+                ->with('pegawai')
+                ->get();
+            $status_label = 'Non Aktif';
+        } else {
+            // Tampilkan hanya pegawai dengan akun aktif (default)
+            $pegawai = User::where('role', 'pegawai')
+                ->where('is_active', true)
+                ->with('pegawai')
+                ->get();
+            $status_label = 'Aktif';
+        }
+        
         $total_pegawai = $pegawai->count();
 
-        return view('dashboard.pegawai_duk', compact('pegawai', 'total_pegawai'));
+        // Statistik PNS & PPPK berdasarkan jenis kelamin (dari profil dasar Pegawai)
+        $statPns = [
+            'total' => $pegawai->filter(fn($u) => strtoupper($u->pegawai?->status_pegawai ?? '') === 'PNS')->count(),
+            'L'     => $pegawai->filter(fn($u) => strtoupper($u->pegawai?->status_pegawai ?? '') === 'PNS' && strtoupper($u->pegawai?->jenis_kelamin ?? '') === 'L')->count(),
+            'P'     => $pegawai->filter(fn($u) => strtoupper($u->pegawai?->status_pegawai ?? '') === 'PNS' && strtoupper($u->pegawai?->jenis_kelamin ?? '') === 'P')->count(),
+        ];
+        $statPppk = [
+            'total' => $pegawai->filter(fn($u) => strtoupper($u->pegawai?->status_pegawai ?? '') === 'PPPK')->count(),
+            'L'     => $pegawai->filter(fn($u) => strtoupper($u->pegawai?->status_pegawai ?? '') === 'PPPK' && strtoupper($u->pegawai?->jenis_kelamin ?? '') === 'L')->count(),
+            'P'     => $pegawai->filter(fn($u) => strtoupper($u->pegawai?->status_pegawai ?? '') === 'PPPK' && strtoupper($u->pegawai?->jenis_kelamin ?? '') === 'P')->count(),
+        ];
+
+        return view('dashboard.pegawai_duk', compact('pegawai', 'total_pegawai', 'status', 'status_label', 'statPns', 'statPppk'));
     }
 
     /**
@@ -130,9 +159,13 @@ class PegawaiController extends Controller
         $validator = Validator::make($request->all(), [
             'nip' => 'required|digits:18|unique:users,pegawai_id',
             'nama_lengkap' => 'required|string|max:100',
-            'password' => 'required|min:6|confirmed',
+            'password' => $this->adminPasswordRules(),
         ], [
             'nip.digits' => 'NIP harus tepat 18 digit.',
+            'password.required' => 'Password harus diisi.',
+            'password.min' => 'Password minimal harus 8 karakter.',
+            'password.regex' => 'Password harus mengandung huruf besar, huruf kecil, angka, dan simbol (@$!%*?&).',
+            'password.confirmed' => 'Konfirmasi password tidak cocok.',
         ]);
 
         if ($validator->fails()) {
@@ -174,9 +207,11 @@ class PegawaiController extends Controller
         }
 
         $request->validate([
-            'password' => 'required|min:6|confirmed',
+            'password' => $this->adminPasswordRules(),
         ], [
-            'password.min' => 'Password minimal 6 karakter.',
+            'password.required' => 'Password harus diisi.',
+            'password.min' => 'Password minimal harus 8 karakter.',
+            'password.regex' => 'Password harus mengandung huruf besar, huruf kecil, angka, dan simbol (@$!%*?&).',
             'password.confirmed' => 'Konfirmasi password tidak cocok.',
         ]);
 
@@ -227,17 +262,45 @@ class PegawaiController extends Controller
     /**
      * Toggle Status Aktif/Nonaktif Pegawai
      */
-    public function toggleStatus($id)
+    public function toggleStatus(Request $request, $id)
     {
         if (!Session::has('role') || !in_array(Session::get('role'), ['admin', 'superadmin'])) {
             return redirect('/login');
         }
 
-        $user = User::findOrFail($id);
-        $user->update(['is_active' => !$user->is_active]);
+        $user = User::where('role', 'pegawai')->findOrFail($id);
 
-        $status = $user->is_active ? 'diaktifkan' : 'dinonaktifkan';
-        return redirect('/pegawai')->with('success', 'Akun pegawai ' . $user->name . ' berhasil ' . $status . '.');
+        if ($user->is_active) {
+            $validated = $request->validate([
+                'deactivation_reason' => ['required', Rule::in(['Mutasi', 'Pindah Instansi', 'Pensiun', 'Meninggal'])],
+            ], [
+                'deactivation_reason.required' => 'Alasan nonaktif wajib dipilih.',
+                'deactivation_reason.in' => 'Alasan nonaktif tidak valid.',
+            ]);
+
+            $reason = $validated['deactivation_reason'];
+            $canReactivate = in_array($reason, ['Mutasi', 'Pindah Instansi']);
+
+            $user->update([
+                'is_active' => false,
+                'deactivation_reason' => $reason,
+                'can_reactivate' => $canReactivate,
+            ]);
+
+            return redirect('/pegawai')->with('success', 'Akun pegawai ' . $user->name . ' berhasil dinonaktifkan. Alasan: ' . $reason . '.');
+        }
+
+        if (!$user->can_reactivate) {
+            return redirect('/pegawai')->with('error', 'Akun pegawai ' . $user->name . ' tidak dapat diaktifkan kembali karena alasan nonaktif: ' . ($user->deactivation_reason ?? '-'));
+        }
+
+        $user->update([
+            'is_active' => true,
+            'deactivation_reason' => null,
+            'can_reactivate' => true,
+        ]);
+
+        return redirect('/pegawai')->with('success', 'Akun pegawai ' . $user->name . ' berhasil diaktifkan kembali.');
     }
 
     /**
@@ -245,14 +308,28 @@ class PegawaiController extends Controller
      */
     public function store(Request $request)
     {
+        if (User::where('pegawai_id', $request->nip)->exists()) {
+            return back()
+                ->withErrors(['nip' => 'pegawai tersebut sudah ditambahkan'])
+                ->withInput()
+                ->with('duplicate_nip', true);
+        }
+
         $validator = Validator::make($request->all(), [
             'nip' => 'required|digits:18|unique:users,pegawai_id',
             'nama_lengkap' => 'required',
         ], [
             'nip.digits' => 'NIP harus tepat 18 digit.',
+            'nip.unique' => 'pegawai tersebut sudah ditambahkan',
         ]);
 
         if ($validator->fails()) {
+            $isDuplicateNip = isset($validator->failed()['nip']['Unique']);
+
+            if ($isDuplicateNip) {
+                return back()->withErrors($validator)->withInput()->with('duplicate_nip', true);
+            }
+
             return back()->withErrors($validator)->withInput();
         }
 
@@ -268,6 +345,16 @@ class PegawaiController extends Controller
         ]);
 
         return redirect('/pegawai')->with('success', 'Pegawai berhasil ditambahkan! Password default: NIP pegawai. Pegawai wajib mengubah password saat login pertama.');
+    }
+
+    private function adminPasswordRules(): array
+    {
+        return [
+            'required',
+            'min:8',
+            'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).+$/',
+            'confirmed',
+        ];
     }
 
     /**
@@ -307,7 +394,7 @@ class PegawaiController extends Controller
             'gol_darah' => 'required|in:A,B,AB,O',
             'status_kawin' => 'required|in:M,BM,CH,CM',
             'status_pegawai' => 'required|in:PNS,PPPK',
-            'no_nik' => 'required|string'
+            'no_nik' => 'required|digits:16'
         ]);
 
         try {
@@ -439,6 +526,7 @@ class PegawaiController extends Controller
             'unit_kerja',
         ])->where('id', Session::get('identifier'))->first();
         
+        
         // Ambil status profil dasar lengkap dari users table
         $profilDasarLengkap = User::where('pegawai_id', Session::get('identifier'))->value('profil_dasar_lengkap') ?? false;
         
@@ -453,7 +541,19 @@ class PegawaiController extends Controller
         $masterPenghargaanList = \App\Models\MasterPenghargaan::orderBy('nama_penghargaan')->get();
         $masterSertifikasiList = \App\Models\MasterSertifikasi::orderBy('nama_sertifikasi')->get();
 
+        if ($drhData) {
+            $this->syncJabatanAktifFromRiwayat($drhData);
+            $this->syncKeluargaJsonFromTables($drhData);
+        }
+
         $pendidikanRows = [];
+        $isLockedLegal = false;
+        $isLockedKeluarga = $drhData?->is_locked_keluarga ?? false;
+        $isLockedPendidikan = $drhData?->is_locked_pendidikan ?? false;
+        $isLockedDiklat = $drhData?->is_locked_diklat ?? false;
+        $isLockedJabatan = $drhData?->is_locked_jabatan ?? false;
+        $isLockedPenghargaan = $drhData?->is_locked_penghargaan ?? false;
+        $isLockedSertifikasi = $drhData?->is_locked_sertifikasi ?? false;
         if ($drhData) {
             $pendidikanRows = $drhData->riwayatPendidikans->map(function ($item) {
                 return [
@@ -520,14 +620,18 @@ class PegawaiController extends Controller
                 'nik_ktp' => $identitasLegal?->no_ktp,
                 'nomor_npwp' => $identitasLegal?->no_npwp,
                 'nomor_bpjs' => $identitasLegal?->no_bpjs,
+                'nomor_kk' => $identitasLegal?->no_kk,
                 'file_ktp' => $identitasLegal?->dok_ktp,
                 'file_npwp' => $identitasLegal?->dok_npwp,
                 'file_bpjs' => $identitasLegal?->dok_bpjs,
                 'file_kk' => $identitasLegal?->dok_kk,
+                'is_locked_legal' => $identitasLegal?->is_locked_legal ?? false,
             ];
+            $isLockedLegal = $identitasLegal?->is_locked_legal ?? false;
         }
-
-        return view('dashboard.drh', compact('drhData', 'profilDasarLengkap', 'agamaList', 'pangkatList', 'jabatanList', 'eselonList', 'unitKerjaList', 'pendidikanList', 'pendidikanRows', 'masterPenghargaanList', 'masterSertifikasiList'));
+        $isDrhLocked = $drhData?->is_drh_locked ?? false;
+        $jenjangOptions = $pendidikanList->pluck('nama');
+        return view('dashboard.drh', compact('drhData', 'profilDasarLengkap', 'agamaList', 'pangkatList', 'jabatanList', 'eselonList', 'unitKerjaList', 'pendidikanList', 'pendidikanRows', 'masterPenghargaanList', 'masterSertifikasiList', 'jenjangOptions', 'isLockedLegal', 'isLockedKeluarga', 'isLockedPendidikan', 'isLockedDiklat', 'isLockedJabatan', 'isLockedPenghargaan', 'isLockedSertifikasi', 'isDrhLocked'));
     }
 
     /**
@@ -541,20 +645,24 @@ class PegawaiController extends Controller
 
         $drhData = Pegawai::where('id', Session::get('identifier'))->first();
 
+        $isLockedLegal = false;
         if ($drhData) {
             $identitasLegal = IdentitasLegal::where('pegawai_id', $drhData->id)->first();
             $drhData->identitas_legal = [
                 'nik_ktp' => $identitasLegal?->no_ktp,
                 'nomor_npwp' => $identitasLegal?->no_npwp,
                 'nomor_bpjs' => $identitasLegal?->no_bpjs,
+                'nomor_kk' => $identitasLegal?->no_kk,
                 'file_ktp' => $identitasLegal?->dok_ktp,
                 'file_npwp' => $identitasLegal?->dok_npwp,
                 'file_bpjs' => $identitasLegal?->dok_bpjs,
                 'file_kk' => $identitasLegal?->dok_kk,
+                'is_locked_legal' => $identitasLegal?->is_locked_legal ?? false,
             ];
+            $isLockedLegal = $identitasLegal?->is_locked_legal ?? false;
         }
 
-        return view('dashboard.drh.identitas', compact('drhData'));
+        return view('dashboard.drh.identitas', compact('drhData', 'isLockedLegal'));
     }
 
     /**
@@ -588,7 +696,10 @@ class PegawaiController extends Controller
 
         return response()->file(Storage::disk('public')->path($filePath), [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . basename($filePath) . '"'
+            'Content-Disposition' => 'inline; filename="' . basename($filePath) . '"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
         ]);
     }
 
@@ -649,19 +760,29 @@ class PegawaiController extends Controller
 
         $column = $columnMap[$type] ?? null;
 
-        if (!$column || !$identitas->$column) {
-            return back()->with('error', 'File tidak ditemukan.');
+        if (!$column) {
+            return response()->json(['status' => 'error', 'message' => 'Tipe dokumen tidak valid.'], 400);
         }
 
-        // Hapus file dari storage
-        if (Storage::disk('public')->exists($identitas->$column)) {
+        // Hapus file dari storage jika ada
+        if ($identitas->$column && Storage::disk('public')->exists($identitas->$column)) {
             Storage::disk('public')->delete($identitas->$column);
         }
 
-        // Null-kan kolom di database
-        $identitas->update([$column => null]);
+        // Null-kan kolom di database dan juga nomor dokumen
+        $nomorMap = [
+            'ktp'  => 'no_ktp',
+            'npwp' => 'no_npwp',
+            'bpjs' => 'no_bpjs',
+            'kk'   => 'no_kk',
+        ];
+        $updateData = [$column => null];
+        if (isset($nomorMap[$type])) {
+            $updateData[$nomorMap[$type]] = null;
+        }
+        $identitas->update($updateData);
 
-        return back()->with('success', 'Dokumen berhasil dihapus. Silakan upload ulang jika diperlukan.');
+        return response()->json(['status' => 'success', 'message' => 'Data berhasil dihapus.']);
     }
 
     /**
@@ -772,6 +893,28 @@ class PegawaiController extends Controller
             
             $pegawai = Pegawai::firstOrNew(['id' => $pegawaiId]);
 
+            // Handle per-sub-section keluarga saves (step=1 with sub_step=pasangan|anak|orang_tua|mertua|saudara)
+            $subStep = $request->input('sub_step', null);
+            if ($step === 1 && $subStep && $request->wantsJson()) {
+                $savedData = $this->storeKeluargaSubSection($request, $pegawai, $subStep);
+                $this->checkDrhCompleteness($pegawai);
+                return response()->json([
+                    'status'   => 'success',
+                    'message'  => 'Data berhasil disimpan',
+                    'sub_step' => $subStep,
+                    'data'     => $savedData,
+                    'files'    => [],
+                    'latest_jabatan' => [
+                        'jenis_jabatan'  => $pegawai->jenis_jabatan,
+                        'eselon_jabatan' => $pegawai->eselon_jabatan,
+                        'nama_jabatan'   => $pegawai->nama_jabatan,
+                        'tmt_jabatan'    => $pegawai->tmt_jabatan
+                            ? \Carbon\Carbon::parse($pegawai->tmt_jabatan)->format('Y-m-d')
+                            : null,
+                    ],
+                ]);
+            }
+
             switch ($step) {
                 case 0: // Profil Dasar
                     $this->storeProfilDasar($request, $pegawai);
@@ -804,10 +947,15 @@ class PegawaiController extends Controller
                     return redirect()->back()->withInput()->with('error', 'Step tidak valid.');
             }
 
+            // Pastikan kolom jabatan aktif di profil selalu sinkron dengan riwayat jabatan terbaru.
+            $this->syncJabatanAktifFromRiwayat($pegawai);
+
             // Cek apakah semua data DRH sudah lengkap
             $this->checkDrhCompleteness($pegawai);
 
-            $message = 'Data berhasil disimpan';
+            $message = $step === 0
+                ? 'data berhasil disimpan, untuk mengisi jabatan isi seluruh riawayat jabatan anda!'
+                : 'Data berhasil disimpan';
             
             // Return JSON response for AJAX requests
             if ($request->wantsJson()) {
@@ -818,7 +966,15 @@ class PegawaiController extends Controller
                     'status' => 'success',
                     'message' => $message,
                     'step' => $step,
-                    'files' => $filePaths
+                    'files' => $filePaths,
+                    'latest_jabatan' => [
+                        'jenis_jabatan' => $pegawai->jenis_jabatan,
+                        'eselon_jabatan' => $pegawai->eselon_jabatan,
+                        'nama_jabatan' => $pegawai->nama_jabatan,
+                        'tmt_jabatan' => $pegawai->tmt_jabatan
+                            ? \Carbon\Carbon::parse($pegawai->tmt_jabatan)->format('Y-m-d')
+                            : null,
+                    ],
                 ]);
             }
 
@@ -845,6 +1001,23 @@ class PegawaiController extends Controller
             return redirect()->back()->withInput()->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
         }
     }
+    public function storeDrhAdmin(Request $request, $id)
+{
+    // Ambil pegawai berdasarkan ID
+    $pegawai = Pegawai::findOrFail($id);
+    
+    // Ganti identifier session sementara agar storeDrh bisa jalan
+    $originalIdentifier = Session::get('identifier');
+    Session::put('identifier', $pegawai->id);
+    
+    // Jalankan logika yang sama dengan storeDrh
+    $result = $this->storeDrh($request);
+    
+    // Kembalikan session identifier ke semula
+    Session::put('identifier', $originalIdentifier);
+    
+    return $result;
+}
 
     /**
      * Menyimpan Profil Dasar (Step 0)
@@ -858,10 +1031,11 @@ class PegawaiController extends Controller
         $unitKerjaList = UnitKerja::pluck('id')->toArray();
 
         $validated = $request->validate([
-            'nik' => 'required|string|max:16',
+            'nik' => 'required|digits:16',
             'email' => 'required|email',
             'no_hp' => 'required|string|max:15',
             'alamat_domisili' => 'required|string|max:255',
+            'alamat_sesuai_ktp' => 'required|string|max:255',
             'tempat_lahir' => 'required|string|max:100',
             'kabupaten_asal' => 'required|string|max:100',
             'tanggal_lahir' => 'required|date',
@@ -870,10 +1044,10 @@ class PegawaiController extends Controller
             'golongan_darah' => 'required|in:A,B,AB,O',
             'status_pegawai' => 'required|in:Belum Menikah,Menikah,Cerai Hidup,Cerai Mati',
             'jenis_asn' => 'required|in:PNS,PPPK',
-            'jabatan_id' => ['required', Rule::in($jabatanIdList)],
+            'jabatan_id' => ['nullable', Rule::in($jabatanIdList)],
             'unit_kerja_id' => ['required', Rule::in($unitKerjaList)],
             'tmt' => 'required|date',
-            'tmt_jabatan' => 'required|date',
+            'tmt_jabatan' => 'nullable|date',
             'golongan' => ['required', Rule::in($pangkatList)],
         ]);
 
@@ -895,6 +1069,7 @@ class PegawaiController extends Controller
         $pegawai->email = $validated['email'];
         $pegawai->no_hp = $validated['no_hp'];
         $pegawai->alamat = $validated['alamat_domisili'];
+        $pegawai->alamat_ktp = $validated['alamat_sesuai_ktp'];
         $pegawai->kabupaten_asal = $validated['kabupaten_asal'];
 
         // Set nama_agama
@@ -910,19 +1085,17 @@ class PegawaiController extends Controller
             $pegawai->golongan_pangkat = $pangkat->golongan;
         }
 
-        // Auto-set jabatan detail columns from jabatans table
-        $jabatan = Jabatan::find($validated['jabatan_id']);
-        if ($jabatan) {
-            $pegawai->jenis_jabatan = $jabatan->jenis_jabatan;
-            $pegawai->nama_jabatan = $jabatan->nama_jabatan;
-            $pegawai->eselon_jabatan = $jabatan->eselon;
-        }
+        // Jabatan pada Profil Dasar tidak lagi menjadi sumber data utama.
+        // Nilai ini diisi melalui Riwayat Jabatan (Step E).
+        $pegawai->jenis_jabatan = null;
+        $pegawai->nama_jabatan = null;
+        $pegawai->eselon_jabatan = null;
 
         // Set unit_kerja_id
         $pegawai->unit_kerja_id = $validated['unit_kerja_id'];
 
         $pegawai->tmt = $validated['tmt'];
-        $pegawai->tmt_jabatan = $validated['tmt_jabatan'];
+        $pegawai->tmt_jabatan = null;
         $pegawai->save();
 
         // Update status profil dasar lengkap di users table
@@ -943,7 +1116,7 @@ class PegawaiController extends Controller
     {
         $validated = $request->validate([
             // Data Pasangan
-            'nik_pasangan' => 'nullable|string|max:16',
+            'nik_pasangan' => 'nullable|digits:16',
             'nama_pasangan' => 'nullable|string|max:255',
             'status_pasangan_select' => 'nullable|in:SUAMI,ISTRI',
             'status_hidup_pasangan' => 'nullable|in:Hidup,Meninggal',
@@ -955,22 +1128,24 @@ class PegawaiController extends Controller
             // Data Anak
             'anak' => 'nullable|array',
             'anak.*.nama' => 'required_with:anak|string|max:255',
-            'anak.*.nik' => 'nullable|string|max:16',
+            'anak.*.nik' => 'nullable|digits:16',
+            'anak.*.jenis_kelamin' => 'nullable|in:L,P',
             'anak.*.tempat_lahir' => 'nullable|string|max:100',
             'anak.*.tanggal_lahir' => 'nullable|date',
+            'anak.*.pekerjaan' => 'nullable|string|max:100',
             'anak.*.status_anak' => 'nullable|in:Kandung,Tiri,Angkat',
             'anak.*.status_kawin' => 'nullable|in:Menikah,Belum Menikah,Cerai Hidup,Cerai Mati',
             'anak.*.file' => 'nullable|file|mimes:pdf|max:1024',
             'anak.*.old_file' => 'nullable|string',
 
             // Data Orang Tua
-            'nik_ayah' => 'nullable|string|max:16',
+            'nik_ayah' => 'nullable|digits:16',
             'nama_ayah' => 'nullable|string|max:255',
             'alamat_ayah' => 'nullable|string|max:255',
             'tanggal_lahir_ayah' => 'nullable|date',
             'status_ayah' => 'nullable|in:Hidup,Meninggal',
             'pekerjaan_ayah' => 'nullable|string|max:100',
-            'nik_ibu' => 'nullable|string|max:16',
+            'nik_ibu' => 'nullable|digits:16',
             'nama_ibu' => 'nullable|string|max:255',
             'alamat_ibu' => 'nullable|string|max:255',
             'tanggal_lahir_ibu' => 'nullable|date',
@@ -978,22 +1153,23 @@ class PegawaiController extends Controller
             'pekerjaan_ibu' => 'nullable|string|max:100',
 
             // Data Mertua
-            'nik_ayah_mertua' => 'nullable|string|max:16',
+            'nik_ayah_mertua' => 'nullable|digits:16',
             'nama_ayah_mertua' => 'nullable|string|max:255',
             'tanggal_lahir_ayah_mertua' => 'nullable|date',
             'status_ayah_mertua' => 'nullable|in:Hidup,Meninggal',
             'pekerjaan_ayah_mertua' => 'nullable|string|max:100',
             'file_ayah_mertua' => 'nullable|file|mimes:pdf|max:1024',
+            'nik_ibu_mertua' => 'nullable|digits:16',
             'nama_ibu_mertua' => 'nullable|string|max:255',
             'tanggal_lahir_ibu_mertua' => 'nullable|date',
             'status_ibu_mertua' => 'nullable|in:Hidup,Meninggal',
             'pekerjaan_ibu_mertua' => 'nullable|string|max:100',
             'file_ibu_mertua' => 'nullable|file|mimes:pdf|max:1024',
-            'nik_ibu_mertua' => 'nullable|string|max:16',
+            'nik_ibu_mertua' => 'nullable|digits:16',
 
             // Data Saudara
             'saudara' => 'nullable|array',
-            'saudara.*.nik' => 'nullable|string|max:16',
+            'saudara.*.nik' => 'nullable|digits:16',
             'saudara.*.nama' => 'nullable|string|max:255',
             'saudara.*.jenis_kelamin' => 'nullable|in:P,L',
             'saudara.*.status_kawin' => 'nullable|in:Belum Menikah,Menikah,Cerai Hidup,Cerai Mati',
@@ -1004,20 +1180,26 @@ class PegawaiController extends Controller
             'saudara.*.old_file' => 'nullable|string',
         ]);
 
-        $dataKeluarga = [];
-
-        // Reset family data on this pegawai so every submission replaces previous rows.
-        Pasangan::where('pegawai_id', $pegawai->id)->delete();
-        Anak::where('pegawai_id', $pegawai->id)->delete();
-        OrangTua::where('pegawai_id', $pegawai->id)->delete();
-        Mertua::where('pegawai_id', $pegawai->id)->delete();
-        Saudara::where('pegawai_id', $pegawai->id)->delete();
+        $dataKeluarga = is_array($pegawai->data_keluarga) ? $pegawai->data_keluarga : [];
 
         // Data Pasangan
-        if (!empty($validated['nama_pasangan'])) {
-            $dataKeluarga['pasangan'] = [
+        $hasPasanganPayload = $request->hasAny([
+            'nik_pasangan',
+            'nama_pasangan',
+            'status_pasangan_select',
+            'status_hidup_pasangan',
+            'tempat_lahir_pasangan',
+            'tanggal_lahir_pasangan',
+            'pekerjaan_pasangan',
+            'no_akta_nikah',
+        ]);
+
+        if ($hasPasanganPayload) {
+            Pasangan::where('pegawai_id', $pegawai->id)->delete();
+
+            $pasanganData = [
                 'nik' => $validated['nik_pasangan'] ?? null,
-                'nama' => $validated['nama_pasangan'],
+                'nama' => $validated['nama_pasangan'] ?? null,
                 'status' => $validated['status_pasangan_select'] ?? null,
                 'status_hidup' => $validated['status_hidup_pasangan'] ?? null,
                 'tempat_lahir' => $validated['tempat_lahir_pasangan'] ?? null,
@@ -1026,24 +1208,29 @@ class PegawaiController extends Controller
                 'no_akta_nikah' => $validated['no_akta_nikah'] ?? null,
             ];
 
-            Pasangan::create([
-                'pegawai_id' => $pegawai->id,
-                'nama_pegawai' => $pegawai->nama_lengkap,
-                'nik' => $validated['nik_pasangan'] ?? null,
-                'nama' => $validated['nama_pasangan'],
-                'status' => $validated['status_pasangan_select'] ?? null,
-                'status_hidup' => $validated['status_hidup_pasangan'] ?? null,
-                'tempat_lahir' => $validated['tempat_lahir_pasangan'] ?? null,
-                'tanggal_lahir' => $validated['tanggal_lahir_pasangan'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_pasangan'] ?? null,
-                'no_akta_nikah' => $validated['no_akta_nikah'] ?? null,
-            ]);
+            $dataKeluarga['pasangan'] = $pasanganData;
+
+            if (!empty($pasanganData['nama'])) {
+                Pasangan::create([
+                    'pegawai_id' => $pegawai->id,
+                    'nama_pegawai' => $pegawai->nama_lengkap,
+                    'nik' => $pasanganData['nik'],
+                    'nama' => $pasanganData['nama'],
+                    'status' => $pasanganData['status'],
+                    'status_hidup' => $pasanganData['status_hidup'],
+                    'tempat_lahir' => $pasanganData['tempat_lahir'],
+                    'tanggal_lahir' => $pasanganData['tanggal_lahir'],
+                    'pekerjaan' => $pasanganData['pekerjaan'],
+                    'no_akta_nikah' => $pasanganData['no_akta_nikah'],
+                ]);
+            }
         }
 
         // Data Anak
-        if (!empty($validated['anak'])) {
+        if ($request->has('anak')) {
+            Anak::where('pegawai_id', $pegawai->id)->delete();
             $dataKeluarga['anak'] = [];
-            foreach ($validated['anak'] as $index => $anak) {
+            foreach (($validated['anak'] ?? []) as $index => $anak) {
                 if (!empty($anak['nama'])) {
                     // Use old_file if no new file uploaded, otherwise store new file
                     $filePath = null;
@@ -1056,8 +1243,10 @@ class PegawaiController extends Controller
                     $dataKeluarga['anak'][] = [
                         'nama' => $anak['nama'],
                         'nik' => $anak['nik'] ?? null,
+                        'jenis_kelamin' => $anak['jenis_kelamin'] ?? null,
                         'tempat_lahir' => $anak['tempat_lahir'] ?? null,
                         'tanggal_lahir' => $anak['tanggal_lahir'] ?? null,
+                        'pekerjaan' => $anak['pekerjaan'] ?? null,
                         'status_anak' => $anak['status_anak'] ?? null,
                         'status_kawin' => $anak['status_kawin'] ?? null,
                         'file' => $filePath,
@@ -1081,58 +1270,78 @@ class PegawaiController extends Controller
         }
 
         // Data Orang Tua
-        $dataKeluarga['orang_tua'] = [
-            'ayah' => [
-                'nik' => $validated['nik_ayah'] ?? null,
-                'nama' => $validated['nama_ayah'] ?? null,
-                'alamat' => $validated['alamat_ayah'] ?? null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ayah'] ?? null,
-                'status_hidup' => $validated['status_ayah'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ayah'] ?? null,
-            ],
-            'ibu' => [
-                'nik' => $validated['nik_ibu'] ?? null,
-                'nama' => $validated['nama_ibu'] ?? null,
-                'alamat' => $validated['alamat_ibu'] ?? null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ibu'] ?? null,
-                'status_hidup' => $validated['status_ibu'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ibu'] ?? null,
-            ],
-        ];
+        $hasOrangTuaPayload = $request->hasAny([
+            'nik_ayah',
+            'nama_ayah',
+            'alamat_ayah',
+            'tanggal_lahir_ayah',
+            'status_ayah',
+            'pekerjaan_ayah',
+            'nik_ibu',
+            'nama_ibu',
+            'alamat_ibu',
+            'tanggal_lahir_ibu',
+            'status_ibu',
+            'pekerjaan_ibu',
+        ]);
 
-        if (!empty($validated['nama_ayah'])) {
-            OrangTua::create([
-                'pegawai_id' => $pegawai->id,
-                'nik' => $validated['nik_ayah'] ?? null,
-                'nama' => $validated['nama_ayah'],
-                'alamat' => $validated['alamat_ayah'] ?? null,
-                'tempat_lahir' => null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ayah'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ayah'] ?? null,
-                'status_hub' => 'Ayah',
-                'status_hidup' => $validated['status_ayah'] ?? null,
-            ]);
-        }
+        if ($hasOrangTuaPayload) {
+            OrangTua::where('pegawai_id', $pegawai->id)->delete();
 
-        if (!empty($validated['nama_ibu'])) {
-            OrangTua::create([
-                'pegawai_id' => $pegawai->id,
-                'nik' => $validated['nik_ibu'] ?? null,
-                'nama' => $validated['nama_ibu'],
-                'alamat' => $validated['alamat_ibu'] ?? null,
-                'tempat_lahir' => null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ibu'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ibu'] ?? null,
-                'status_hub' => 'Ibu',
-                'status_hidup' => $validated['status_ibu'] ?? null,
-            ]);
+            $dataKeluarga['orang_tua'] = [
+                'ayah' => [
+                    'nik' => $validated['nik_ayah'] ?? null,
+                    'nama' => $validated['nama_ayah'] ?? null,
+                    'alamat' => $validated['alamat_ayah'] ?? null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ayah'] ?? null,
+                    'status_hidup' => $validated['status_ayah'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ayah'] ?? null,
+                ],
+                'ibu' => [
+                    'nik' => $validated['nik_ibu'] ?? null,
+                    'nama' => $validated['nama_ibu'] ?? null,
+                    'alamat' => $validated['alamat_ibu'] ?? null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ibu'] ?? null,
+                    'status_hidup' => $validated['status_ibu'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ibu'] ?? null,
+                ],
+            ];
+
+            if (!empty($validated['nama_ayah'])) {
+                OrangTua::create([
+                    'pegawai_id' => $pegawai->id,
+                    'nik' => $validated['nik_ayah'] ?? null,
+                    'nama' => $validated['nama_ayah'],
+                    'alamat' => $validated['alamat_ayah'] ?? null,
+                    'tempat_lahir' => null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ayah'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ayah'] ?? null,
+                    'status_hub' => 'Ayah',
+                    'status_hidup' => $validated['status_ayah'] ?? null,
+                ]);
+            }
+
+            if (!empty($validated['nama_ibu'])) {
+                OrangTua::create([
+                    'pegawai_id' => $pegawai->id,
+                    'nik' => $validated['nik_ibu'] ?? null,
+                    'nama' => $validated['nama_ibu'],
+                    'alamat' => $validated['alamat_ibu'] ?? null,
+                    'tempat_lahir' => null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ibu'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ibu'] ?? null,
+                    'status_hub' => 'Ibu',
+                    'status_hidup' => $validated['status_ibu'] ?? null,
+                ]);
+            }
         }
 
         // Data Saudara
         $saudaraRows = [];
-        if (!empty($validated['saudara']) && is_array($validated['saudara'])) {
+        if ($request->has('saudara')) {
+            Saudara::where('pegawai_id', $pegawai->id)->delete();
             $dataKeluarga['saudara'] = [];
-            foreach ($validated['saudara'] as $index => $sdr) {
+            foreach (($validated['saudara'] ?? []) as $index => $sdr) {
                 if (!empty($sdr['nama'])) {
                     // Use old_file if no new file uploaded, otherwise store new file
                     $filePath = null;
@@ -1170,59 +1379,566 @@ class PegawaiController extends Controller
         }
 
         // Data Mertua
-        $fileAyahMertua = $this->storeFile($request->file('file_ayah_mertua'), 'keluarga/mertua');
-        $fileIbuMertua = $this->storeFile($request->file('file_ibu_mertua'), 'keluarga/mertua');
+        $hasMertuaPayload = $request->hasAny([
+            'nik_ayah_mertua',
+            'nama_ayah_mertua',
+            'tanggal_lahir_ayah_mertua',
+            'status_ayah_mertua',
+            'pekerjaan_ayah_mertua',
+            'file_ayah_mertua',
+            'nik_ibu_mertua',
+            'nama_ibu_mertua',
+            'tanggal_lahir_ibu_mertua',
+            'status_ibu_mertua',
+            'pekerjaan_ibu_mertua',
+            'file_ibu_mertua',
+        ]);
 
-        $dataKeluarga['mertua'] = [
-            'ayah' => [
-                'nik' => $validated['nik_ayah_mertua'] ?? null,
-                'nama' => $validated['nama_ayah_mertua'] ?? null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ayah_mertua'] ?? null,
-                'status_hidup' => $validated['status_ayah_mertua'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ayah_mertua'] ?? null,
-                'file' => $fileAyahMertua,
-            ],
-            'ibu' => [
-                'nik' => $validated['nik_ibu_mertua'] ?? null,
-                'nama' => $validated['nama_ibu_mertua'] ?? null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ibu_mertua'] ?? null,
-                'status_hidup' => $validated['status_ibu_mertua'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ibu_mertua'] ?? null,
-                'file' => $fileIbuMertua,
-            ],
-        ];
+        if ($hasMertuaPayload) {
+            Mertua::where('pegawai_id', $pegawai->id)->delete();
 
-        if (!empty($validated['nama_ayah_mertua'])) {
-            Mertua::create([
-                'pegawai_id' => $pegawai->id,
-                'nama_pegawai' => $pegawai->nama_lengkap,
-                'nik' => $validated['nik_ayah_mertua'] ?? null,
-                'nama' => $validated['nama_ayah_mertua'],
-                'tempat_lahir' => null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ayah_mertua'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ayah_mertua'] ?? null,
-                'status_hub' => 'Ayah Mertua',
-                'status_hidup' => $validated['status_ayah_mertua'] ?? null,
-                'file' => $fileAyahMertua,
-            ]);
-        }
+            $fileAyahMertua = $this->storeFile($request->file('file_ayah_mertua'), 'keluarga/mertua');
+            $fileIbuMertua = $this->storeFile($request->file('file_ibu_mertua'), 'keluarga/mertua');
 
-        if (!empty($validated['nama_ibu_mertua'])) {
-            Mertua::create([
-                'pegawai_id' => $pegawai->id,
-                'nama_pegawai' => $pegawai->nama_lengkap,
-                'nik' => $validated['nik_ibu_mertua'] ?? null,
-                'nama' => $validated['nama_ibu_mertua'],
-                'tempat_lahir' => null,
-                'tanggal_lahir' => $validated['tanggal_lahir_ibu_mertua'] ?? null,
-                'pekerjaan' => $validated['pekerjaan_ibu_mertua'] ?? null,
-                'status_hub' => 'Ibu Mertua',
-                'status_hidup' => $validated['status_ibu_mertua'] ?? null,
-                'file' => $fileIbuMertua,
-            ]);
+            $dataKeluarga['mertua'] = [
+                'ayah' => [
+                    'nik' => $validated['nik_ayah_mertua'] ?? null,
+                    'nama' => $validated['nama_ayah_mertua'] ?? null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ayah_mertua'] ?? null,
+                    'status_hidup' => $validated['status_ayah_mertua'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ayah_mertua'] ?? null,
+                    'file' => $fileAyahMertua,
+                ],
+                'ibu' => [
+                    'nik' => $validated['nik_ibu_mertua'] ?? null,
+                    'nama' => $validated['nama_ibu_mertua'] ?? null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ibu_mertua'] ?? null,
+                    'status_hidup' => $validated['status_ibu_mertua'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ibu_mertua'] ?? null,
+                    'file' => $fileIbuMertua,
+                ],
+            ];
+
+            if (!empty($validated['nama_ayah_mertua'])) {
+                Mertua::create([
+                    'pegawai_id' => $pegawai->id,
+                    'nama_pegawai' => $pegawai->nama_lengkap,
+                    'nik' => $validated['nik_ayah_mertua'] ?? null,
+                    'nama' => $validated['nama_ayah_mertua'],
+                    'tempat_lahir' => null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ayah_mertua'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ayah_mertua'] ?? null,
+                    'status_hub' => 'Ayah Mertua',
+                    'status_hidup' => $validated['status_ayah_mertua'] ?? null,
+                    'file' => $fileAyahMertua,
+                ]);
+            }
+            if (!empty($validated['nama_ibu_mertua'])) {
+                Mertua::create([
+                    'pegawai_id' => $pegawai->id,
+                    'nama_pegawai' => $pegawai->nama_lengkap,
+                    'nik' => $validated['nik_ibu_mertua'] ?? null,
+                    'nama' => $validated['nama_ibu_mertua'],
+                    'tempat_lahir' => null,
+                    'tanggal_lahir' => $validated['tanggal_lahir_ibu_mertua'] ?? null,
+                    'pekerjaan' => $validated['pekerjaan_ibu_mertua'] ?? null,
+                    'status_hub' => 'Ibu Mertua',
+                    'status_hidup' => $validated['status_ibu_mertua'] ?? null,
+                    'file' => $fileIbuMertua,
+                ]);
+            }
         }
 
         $pegawai->data_keluarga = $dataKeluarga;
+        $pegawai->save();
+        $this->syncKeluargaJsonFromTables($pegawai);
+    }
+
+    /**
+     * Menyimpan satu sub-bagian dari data keluarga (pasangan/anak/orang_tua/mertua/saudara)
+     * tanpa menghapus sub-bagian lainnya.
+     */
+    private function storeKeluargaSubSection(Request $request, Pegawai $pegawai, string $subStep): array
+    {
+        $pegawai->refresh();
+        $existingData = is_array($pegawai->data_keluarga) ? $pegawai->data_keluarga : [];
+
+        switch ($subStep) {
+            case 'pasangan':
+                $validated = $request->validate([
+                    'nik_pasangan'            => 'nullable|digits:16',
+                    'nama_pasangan'           => 'nullable|string|max:255',
+                    'status_pasangan_select'  => 'nullable|in:SUAMI,ISTRI',
+                    'status_hidup_pasangan'   => 'nullable|in:Hidup,Meninggal',
+                    'tempat_lahir_pasangan'   => 'nullable|string|max:100',
+                    'tanggal_lahir_pasangan'  => 'nullable|date',
+                    'pekerjaan_pasangan'      => 'nullable|string|max:100',
+                    'no_akta_nikah'           => 'nullable|string|max:255',
+                ]);
+
+                Pasangan::where('pegawai_id', $pegawai->id)->delete();
+
+                $pasanganData = [
+                    'nik'          => $validated['nik_pasangan'] ?? null,
+                    'nama'         => $validated['nama_pasangan'] ?? null,
+                    'status'       => $validated['status_pasangan_select'] ?? null,
+                    'status_hidup' => $validated['status_hidup_pasangan'] ?? null,
+                    'tempat_lahir' => $validated['tempat_lahir_pasangan'] ?? null,
+                    'tanggal_lahir'=> $validated['tanggal_lahir_pasangan'] ?? null,
+                    'pekerjaan'    => $validated['pekerjaan_pasangan'] ?? null,
+                    'no_akta_nikah'=> $validated['no_akta_nikah'] ?? null,
+                ];
+
+                if (!empty($validated['nama_pasangan'])) {
+                    Pasangan::create(array_merge(['pegawai_id' => $pegawai->id, 'nama_pegawai' => $pegawai->nama_lengkap], $pasanganData));
+                }
+
+                $existingData['pasangan'] = $pasanganData;
+                break;
+
+            case 'anak':
+                $validated = $request->validate([
+                    'anak'               => 'nullable|array',
+                    'anak.*.nama'        => 'required_with:anak|string|max:255',
+                    'anak.*.nik'         => 'nullable|digits:16',
+                    'anak.*.tempat_lahir'=> 'nullable|string|max:100',
+                    'anak.*.tanggal_lahir'=> 'nullable|date',
+                    'anak.*.status_anak' => 'nullable|in:Kandung,Tiri,Angkat',
+                    'anak.*.status_kawin'=> 'nullable|in:Menikah,Belum Menikah,Cerai Hidup,Cerai Mati',
+                    'anak.*.jenis_kelamin' => 'nullable|in:L,P',
+                    'anak.*.pekerjaan'     => 'nullable|string|max:100',
+                    'anak.*.file'        => 'nullable|file|mimes:pdf|max:1024',
+                    'anak.*.old_file'    => 'nullable|string',
+                ]);
+
+                $isLocked = (bool) $pegawai->is_locked_keluarga;
+
+                if (!$isLocked) {
+                    Anak::where('pegawai_id', $pegawai->id)->delete();
+                }
+
+                $anakList = [];
+                if (!empty($validated['anak'])) {
+                    foreach ($validated['anak'] as $index => $anak) {
+                        if (!empty($anak['nama'])) {
+                            // When locked, skip rows that already have an id (existing records)
+                            if ($isLocked && !empty($anak['id'])) {
+                                // Preserve existing row in result list
+                                $existingAnak = Anak::find($anak['id']);
+                                if ($existingAnak && $existingAnak->pegawai_id === $pegawai->id) {
+                                    $anakList[] = [
+                                        'id'            => $existingAnak->id,
+                                        'nama'          => $existingAnak->nama,
+                                        'nik'           => $existingAnak->nik,
+                                        'jenis_kelamin' => $existingAnak->jenis_kelamin,
+                                        'tempat_lahir'  => $existingAnak->tempat_lahir,
+                                        'tanggal_lahir' => $existingAnak->tanggal_lahir,
+                                        'pekerjaan'     => $existingAnak->pekerjaan,
+                                        'status_anak'   => $existingAnak->status_anak,
+                                        'status_kawin'  => $existingAnak->status_kawin,
+                                        'file'          => $existingAnak->file,
+                                        'file_url'      => $existingAnak->file ? \Storage::disk('public')->url($existingAnak->file) : null,
+                                    ];
+                                }
+                                continue;
+                            }
+                            $filePath = null;
+                            if ($request->hasFile("anak.{$index}.file")) {
+                                $filePath = $this->storeFile($request->file("anak.{$index}.file"), 'keluarga/anak');
+                            } elseif (!empty($anak['old_file'])) {
+                                $filePath = $anak['old_file'];
+                            }
+                            $newAnak = Anak::create([
+                                'pegawai_id'    => $pegawai->id,
+                                'nama_pegawai'  => $pegawai->nama_lengkap,
+                                'nik'           => $anak['nik'] ?? null,
+                                'nama'          => $anak['nama'],
+                                'jenis_kelamin' => $anak['jenis_kelamin'] ?? null,
+                                'tempat_lahir'  => $anak['tempat_lahir'] ?? null,
+                                'tanggal_lahir' => $anak['tanggal_lahir'] ?? null,
+                                'pekerjaan'     => $anak['pekerjaan'] ?? null,
+                                'status_anak'   => $anak['status_anak'] ?? null,
+                                'status_kawin'  => $anak['status_kawin'] ?? null,
+                                'file'          => $filePath,
+                            ]);
+                            $anakList[] = [
+                                'id'            => $newAnak->id,
+                                'nama'          => $anak['nama'],
+                                'nik'           => $anak['nik'] ?? null,
+                                'jenis_kelamin' => $anak['jenis_kelamin'] ?? null,
+                                'tempat_lahir'  => $anak['tempat_lahir'] ?? null,
+                                'tanggal_lahir' => $anak['tanggal_lahir'] ?? null,
+                                'pekerjaan'     => $anak['pekerjaan'] ?? null,
+                                'status_anak'   => $anak['status_anak'] ?? null,
+                                'status_kawin'  => $anak['status_kawin'] ?? null,
+                                'file'          => $filePath,
+                                'file_url'      => $filePath ? \Storage::disk('public')->url($filePath) : null,
+                            ];
+                        }
+                    }
+                }
+
+                $existingData['anak'] = array_map(fn($a) => array_diff_key($a, ['file_url' => '']), $anakList);
+                break;
+
+            case 'orang_tua':
+                $validated = $request->validate([
+                    'nik_ayah'          => 'nullable|digits:16',
+                    'nama_ayah'         => 'nullable|string|max:255',
+                    'alamat_ayah'       => 'nullable|string|max:255',
+                    'tanggal_lahir_ayah'=> 'nullable|date',
+                    'status_ayah'       => 'nullable|in:Hidup,Meninggal',
+                    'pekerjaan_ayah'    => 'nullable|string|max:100',
+                    'nik_ibu'           => 'nullable|digits:16',
+                    'nama_ibu'          => 'nullable|string|max:255',
+                    'alamat_ibu'        => 'nullable|string|max:255',
+                    'tanggal_lahir_ibu' => 'nullable|date',
+                    'status_ibu'        => 'nullable|in:Hidup,Meninggal',
+                    'pekerjaan_ibu'     => 'nullable|string|max:100',
+                ]);
+
+                OrangTua::where('pegawai_id', $pegawai->id)->delete();
+
+                $orangTuaData = [
+                    'ayah' => [
+                        'nik'          => $validated['nik_ayah'] ?? null,
+                        'nama'         => $validated['nama_ayah'] ?? null,
+                        'alamat'       => $validated['alamat_ayah'] ?? null,
+                        'tanggal_lahir'=> $validated['tanggal_lahir_ayah'] ?? null,
+                        'status_hidup' => $validated['status_ayah'] ?? null,
+                        'pekerjaan'    => $validated['pekerjaan_ayah'] ?? null,
+                    ],
+                    'ibu' => [
+                        'nik'          => $validated['nik_ibu'] ?? null,
+                        'nama'         => $validated['nama_ibu'] ?? null,
+                        'alamat'       => $validated['alamat_ibu'] ?? null,
+                        'tanggal_lahir'=> $validated['tanggal_lahir_ibu'] ?? null,
+                        'status_hidup' => $validated['status_ibu'] ?? null,
+                        'pekerjaan'    => $validated['pekerjaan_ibu'] ?? null,
+                    ],
+                ];
+
+                if (!empty($validated['nama_ayah'])) {
+                    OrangTua::create([
+                        'pegawai_id'    => $pegawai->id,
+                        'nik'           => $validated['nik_ayah'] ?? null,
+                        'nama'          => $validated['nama_ayah'],
+                        'alamat'        => $validated['alamat_ayah'] ?? null,
+                        'tempat_lahir'  => null,
+                        'tanggal_lahir' => $validated['tanggal_lahir_ayah'] ?? null,
+                        'pekerjaan'     => $validated['pekerjaan_ayah'] ?? null,
+                        'status_hub'    => 'Ayah',
+                        'status_hidup'  => $validated['status_ayah'] ?? null,
+                    ]);
+                }
+                if (!empty($validated['nama_ibu'])) {
+                    OrangTua::create([
+                        'pegawai_id'    => $pegawai->id,
+                        'nik'           => $validated['nik_ibu'] ?? null,
+                        'nama'          => $validated['nama_ibu'],
+                        'alamat'        => $validated['alamat_ibu'] ?? null,
+                        'tempat_lahir'  => null,
+                        'tanggal_lahir' => $validated['tanggal_lahir_ibu'] ?? null,
+                        'pekerjaan'     => $validated['pekerjaan_ibu'] ?? null,
+                        'status_hub'    => 'Ibu',
+                        'status_hidup'  => $validated['status_ibu'] ?? null,
+                    ]);
+                }
+
+                $existingData['orang_tua'] = $orangTuaData;
+                break;
+
+            case 'mertua':
+                $validated = $request->validate([
+                    'nik_ayah_mertua'           => 'nullable|digits:16',
+                    'nama_ayah_mertua'          => 'nullable|string|max:255',
+                    'tanggal_lahir_ayah_mertua' => 'nullable|date',
+                    'status_ayah_mertua'        => 'nullable|in:Hidup,Meninggal',
+                    'pekerjaan_ayah_mertua'     => 'nullable|string|max:100',
+                    'file_ayah_mertua'          => 'nullable|file|mimes:pdf|max:1024',
+                    'nik_ibu_mertua'            => 'nullable|digits:16',
+                    'nama_ibu_mertua'           => 'nullable|string|max:255',
+                    'tanggal_lahir_ibu_mertua'  => 'nullable|date',
+                    'status_ibu_mertua'         => 'nullable|in:Hidup,Meninggal',
+                    'pekerjaan_ibu_mertua'      => 'nullable|string|max:100',
+                    'file_ibu_mertua'           => 'nullable|file|mimes:pdf|max:1024',
+                    'nik_ibu_mertua'            => 'nullable|digits:16',
+
+                ]);
+
+                Mertua::where('pegawai_id', $pegawai->id)->delete();
+
+                $fileAyahMertua = $this->storeFile($request->file('file_ayah_mertua'), 'keluarga/mertua');
+                $fileIbuMertua = $this->storeFile($request->file('file_ibu_mertua'), 'keluarga/mertua');
+
+                $mertuaData = [
+                    'ayah' => [
+                        'nik'          => $validated['nik_ayah_mertua'] ?? null,
+                        'nama'         => $validated['nama_ayah_mertua'] ?? null,
+                        'tanggal_lahir'=> $validated['tanggal_lahir_ayah_mertua'] ?? null,
+                        'status_hidup' => $validated['status_ayah_mertua'] ?? null,
+                        'pekerjaan'    => $validated['pekerjaan_ayah_mertua'] ?? null,
+                        'file'         => $fileAyahMertua,
+                    ],
+                    'ibu' => [
+                        'nik'          => $validated['nik_ibu_mertua'] ?? null,
+                        'nama'         => $validated['nama_ibu_mertua'] ?? null,
+                        'tanggal_lahir'=> $validated['tanggal_lahir_ibu_mertua'] ?? null,
+                        'status_hidup' => $validated['status_ibu_mertua'] ?? null,
+                        'pekerjaan'    => $validated['pekerjaan_ibu_mertua'] ?? null,
+                        'file'         => $fileIbuMertua,
+                    ],
+                ];
+
+                if (!empty($validated['nama_ayah_mertua'])) {
+                    Mertua::create([
+                        'pegawai_id'    => $pegawai->id,
+                        'nama_pegawai'  => $pegawai->nama_lengkap,
+                        'nik'           => $validated['nik_ayah_mertua'] ?? null,
+                        'nama'          => $validated['nama_ayah_mertua'],
+                        'tempat_lahir'  => null,
+                        'tanggal_lahir' => $validated['tanggal_lahir_ayah_mertua'] ?? null,
+                        'pekerjaan'     => $validated['pekerjaan_ayah_mertua'] ?? null,
+                        'status_hub'    => 'Ayah Mertua',
+                        'status_hidup'  => $validated['status_ayah_mertua'] ?? null,
+                        'file'          => $fileAyahMertua,
+                    ]);
+                }
+                if (!empty($validated['nama_ibu_mertua'])) {
+                    Mertua::create([
+                        'pegawai_id'    => $pegawai->id,
+                        'nama_pegawai'  => $pegawai->nama_lengkap,
+                        'nik'           => $validated['nik_ibu_mertua'] ?? null,
+                        'nama'          => $validated['nama_ibu_mertua'],
+                        'tempat_lahir'  => null,
+                        'tanggal_lahir' => $validated['tanggal_lahir_ibu_mertua'] ?? null,
+                        'pekerjaan'     => $validated['pekerjaan_ibu_mertua'] ?? null,
+                        'status_hub'    => 'Ibu Mertua',
+                        'status_hidup'  => $validated['status_ibu_mertua'] ?? null,
+                        'file'          => $fileIbuMertua,
+                    ]);
+                }
+
+                $existingData['mertua'] = $mertuaData;
+                break;
+
+            case 'saudara':
+                $validated = $request->validate([
+                    'saudara'                  => 'nullable|array',
+                    'saudara.*.nik'            => 'nullable|digits:16',
+                    'saudara.*.nama'           => 'nullable|string|max:255',
+                    'saudara.*.jenis_kelamin'  => 'nullable|in:P,L',
+                    'saudara.*.status_kawin'   => 'nullable|in:Belum Menikah,Menikah,Cerai Hidup,Cerai Mati',
+                    'saudara.*.status_saudara' => 'nullable|in:Kandung,Tiri,Angkat',
+                    'saudara.*.tanggal_lahir'  => 'nullable|date',
+                    'saudara.*.pekerjaan'       => 'nullable|string|max:100',
+                    'saudara.*.tempat_lahir'   => 'nullable|string|max:100',
+                    'saudara.*.file'           => 'nullable|file|mimes:pdf|max:1024',
+                    'saudara.*.old_file'       => 'nullable|string',
+                ]);
+
+                $isLocked = (bool) $pegawai->is_locked_keluarga;
+
+                if (!$isLocked) {
+                    Saudara::where('pegawai_id', $pegawai->id)->delete();
+                }
+
+                $saudaraList = [];
+                if (!empty($validated['saudara'])) {
+                    foreach ($validated['saudara'] as $index => $sdr) {
+                        if (!empty($sdr['nama'])) {
+                            // When locked, skip rows that already have an id (existing records)
+                            if ($isLocked && !empty($sdr['id'])) {
+                                $existingSaudara = Saudara::find($sdr['id']);
+                                if ($existingSaudara && $existingSaudara->pegawai_id === $pegawai->id) {
+                                    $saudaraList[] = [
+                                        'id'             => $existingSaudara->id,
+                                        'nik'            => $existingSaudara->nik,
+                                        'nama'           => $existingSaudara->nama,
+                                        'jenis_kelamin'  => $existingSaudara->jenis_kelamin,
+                                        'tempat_lahir'   => $existingSaudara->tempat_lahir,
+                                        'tanggal_lahir'  => $existingSaudara->tanggal_lahir,
+                                        'pekerjaan'      => $existingSaudara->pekerjaan,
+                                        'status_kawin'   => $existingSaudara->status_kawin,
+                                        'status_saudara' => $existingSaudara->status_hub,
+                                        'file'           => $existingSaudara->file,
+                                        'file_url'       => $existingSaudara->file ? \Storage::disk('public')->url($existingSaudara->file) : null,
+                                    ];
+                                }
+                                continue;
+                            }
+                            $filePath = null;
+                            if ($request->hasFile("saudara.{$index}.file")) {
+                                $filePath = $this->storeFile($request->file("saudara.{$index}.file"), 'keluarga/saudara');
+                            } elseif (!empty($sdr['old_file'])) {
+                                $filePath = $sdr['old_file'];
+                            }
+                            $newSaudara = Saudara::create([
+                                'pegawai_id'    => $pegawai->id,
+                                'nama_pegawai'  => $pegawai->nama_lengkap,
+                                'nik'           => $sdr['nik'] ?? null,
+                                'nama'          => $sdr['nama'],
+                                'jenis_kelamin' => $sdr['jenis_kelamin'] ?? null,
+                                'tempat_lahir'  => $sdr['tempat_lahir'] ?? null,
+                                'tanggal_lahir' => $sdr['tanggal_lahir'] ?? null,
+                                'pekerjaan'     => $sdr['pekerjaan'] ?? null,
+                                'status_hub'    => $sdr['status_saudara'] ?? null,
+                                'status_kawin'  => $sdr['status_kawin'] ?? null,
+                                'file'          => $filePath,
+                            ]);
+                            $saudaraList[] = [
+                                'id'             => $newSaudara->id,
+                                'nik'            => $sdr['nik'] ?? null,
+                                'nama'           => $sdr['nama'],
+                                'jenis_kelamin'  => $sdr['jenis_kelamin'] ?? null,
+                                'tempat_lahir'   => $sdr['tempat_lahir'] ?? null,
+                                'status_kawin'   => $sdr['status_kawin'] ?? null,
+                                'status_saudara' => $sdr['status_saudara'] ?? null,
+                                'tanggal_lahir'  => $sdr['tanggal_lahir'] ?? null,
+                                'pekerjaan'      => $sdr['pekerjaan'] ?? null,
+                                'file'           => $filePath,
+                                'file_url'       => $filePath ? \Storage::disk('public')->url($filePath) : null,
+                            ];
+                        }
+                    }
+                }
+
+                $existingData['saudara'] = $saudaraList;
+                break;
+        }
+
+        $pegawai->data_keluarga = $existingData;
+        $pegawai->save();
+
+        if (in_array($subStep, ['pasangan', 'orang_tua', 'mertua'], true)) {
+            $this->syncKeluargaJsonFromTables($pegawai);
+            $pegawai->refresh();
+            $synced = is_array($pegawai->data_keluarga) ? $pegawai->data_keluarga : [];
+            return $synced[$subStep] ?? [];
+        }
+
+        // Return the saved sub-section data (with file URLs for anak/saudara lists)
+        if ($subStep === 'anak') {
+            return $anakList ?? [];
+        }
+        if ($subStep === 'saudara') {
+            return $saudaraList ?? [];
+        }
+        return $existingData[$subStep] ?? [];
+    }
+
+    private function resolveCurrentPegawaiOrFail(): Pegawai
+    {
+        $pegawaiId = Session::get('identifier');
+        if (!$pegawaiId) {
+            abort(401, 'Unauthorized');
+        }
+
+        return Pegawai::where('id', $pegawaiId)->firstOrFail();
+    }
+
+    private function syncKeluargaJsonFromTables(Pegawai $pegawai): void
+    {
+        $existing = is_array($pegawai->data_keluarga) ? $pegawai->data_keluarga : [];
+
+        $pasangan = Pasangan::where('pegawai_id', $pegawai->id)->latest('id')->first();
+        $existing['pasangan'] = $pasangan ? [
+            'id'            => $pasangan->id,
+            'nik'           => $pasangan->nik,
+            'nama'          => $pasangan->nama,
+            'status'        => $pasangan->status,
+            'status_hidup'  => $pasangan->status_hidup,
+            'tempat_lahir'  => $pasangan->tempat_lahir,
+            'tanggal_lahir' => $pasangan->tanggal_lahir,
+            'pekerjaan'     => $pasangan->pekerjaan,
+            'no_akta_nikah' => $pasangan->no_akta_nikah,
+        ] : [];
+
+        $orangTuaRows = OrangTua::where('pegawai_id', $pegawai->id)->get();
+        $otAyah = $orangTuaRows->firstWhere('status_hub', 'Ayah');
+        $otIbu = $orangTuaRows->firstWhere('status_hub', 'Ibu');
+        $existing['orang_tua'] = [
+            'ayah' => $otAyah ? [
+                'id'            => $otAyah->id,
+                'nik'           => $otAyah->nik,
+                'nama'          => $otAyah->nama,
+                'alamat'        => $otAyah->alamat,
+                'tanggal_lahir' => $otAyah->tanggal_lahir,
+                'status_hidup'  => $otAyah->status_hidup,
+                'pekerjaan'     => $otAyah->pekerjaan,
+                'status_hub'    => $otAyah->status_hub,
+            ] : [],
+            'ibu' => $otIbu ? [
+                'id'            => $otIbu->id,
+                'nik'           => $otIbu->nik,
+                'nama'          => $otIbu->nama,
+                'alamat'        => $otIbu->alamat,
+                'tanggal_lahir' => $otIbu->tanggal_lahir,
+                'status_hidup'  => $otIbu->status_hidup,
+                'pekerjaan'     => $otIbu->pekerjaan,
+                'status_hub'    => $otIbu->status_hub,
+            ] : [],
+        ];
+
+        $mertuaRows = Mertua::where('pegawai_id', $pegawai->id)->get();
+        $mAyah = $mertuaRows->firstWhere('status_hub', 'Ayah Mertua');
+        $mIbu = $mertuaRows->firstWhere('status_hub', 'Ibu Mertua');
+        $existing['mertua'] = [
+            'ayah' => $mAyah ? [
+                'id'            => $mAyah->id,
+                'nik'           => $mAyah->nik,
+                'nama'          => $mAyah->nama,
+                'tanggal_lahir' => $mAyah->tanggal_lahir,
+                'status_hidup'  => $mAyah->status_hidup,
+                'pekerjaan'     => $mAyah->pekerjaan,
+                'status_hub'    => $mAyah->status_hub,
+                'file'          => $mAyah->file,
+            ] : [],
+            'ibu' => $mIbu ? [
+                'id'            => $mIbu->id,
+                'nik'           => $mIbu->nik,
+                'nama'          => $mIbu->nama,
+                'tanggal_lahir' => $mIbu->tanggal_lahir,
+                'status_hidup'  => $mIbu->status_hidup,
+                'pekerjaan'     => $mIbu->pekerjaan,
+                'status_hub'    => $mIbu->status_hub,
+                'file'          => $mIbu->file,
+            ] : [],
+        ];
+
+        $existing['anak'] = Anak::where('pegawai_id', $pegawai->id)
+            ->get()
+            ->map(fn($a) => [
+                'id'            => $a->id,
+                'nama'          => $a->nama,
+                'nik'           => $a->nik,
+                'jenis_kelamin' => $a->jenis_kelamin,
+                'tempat_lahir'  => $a->tempat_lahir,
+                'tanggal_lahir' => $a->tanggal_lahir,
+                'pekerjaan'     => $a->pekerjaan,
+                'status_anak'   => $a->status_anak,
+                'status_kawin'  => $a->status_kawin,
+                'file'          => $a->file,
+            ])
+            ->toArray();
+
+        $existing['saudara'] = Saudara::where('pegawai_id', $pegawai->id)
+            ->get()
+            ->map(fn($s) => [
+                'id'             => $s->id,
+                'nik'            => $s->nik,
+                'nama'           => $s->nama,
+                'jenis_kelamin'  => $s->jenis_kelamin,
+                'tempat_lahir'   => $s->tempat_lahir,
+                'status_kawin'   => $s->status_kawin,
+                'status_saudara' => $s->status_hub,
+                'tanggal_lahir'  => $s->tanggal_lahir,
+                'pekerjaan'      => $s->pekerjaan,
+                'file'           => $s->file,
+            ])
+            ->toArray();
+
+        $pegawai->data_keluarga = $existing;
         $pegawai->save();
     }
 
@@ -1231,6 +1947,8 @@ class PegawaiController extends Controller
      */
     private function storeRiwayatPendidikan(Request $request, Pegawai $pegawai)
     {
+        $isLocked = (bool) $pegawai->is_locked_pendidikan;
+
         $validated = $request->validate([
             'pendidikan' => 'nullable|array',
             'pendidikan.*.jenjang' => 'required_with:pendidikan|string|max:50',
@@ -1245,23 +1963,28 @@ class PegawaiController extends Controller
             'pendidikan.*.id' => 'nullable|integer',
         ]);
 
-        // Hapus data yang di-mark _delete=1
+        // Hapus data yang di-mark _delete=1 (hanya jika tidak terkunci)
         $deleted = false;
         if (!empty($validated['pendidikan'])) {
             foreach ($validated['pendidikan'] as $index => $pendidikan) {
                 if (!empty($pendidikan['_delete']) && !empty($pendidikan['id'])) {
-                    // Hapus relasi jika ada (contoh: file, relasi lain, dsb)
-                    $riw = \App\Models\RiwayatPendidikan::find($pendidikan['id']);
-                    if ($riw) {
-                        // Contoh: hapus file jika ada
-                        if ($riw->dokumen && \Storage::disk('public')->exists($riw->dokumen)) {
-                            \Storage::disk('public')->delete($riw->dokumen);
+                    if (!$isLocked) {
+                        // Hapus relasi jika ada (contoh: file, relasi lain, dsb)
+                        $riw = \App\Models\RiwayatPendidikan::find($pendidikan['id']);
+                        if ($riw) {
+                            if ($riw->dokumen && \Storage::disk('public')->exists($riw->dokumen)) {
+                                \Storage::disk('public')->delete($riw->dokumen);
+                            }
+                            $riw->delete();
+                            $deleted = true;
                         }
-                        // TODO: hapus relasi lain jika ada (tambahkan di sini)
-                        $riw->delete();
-                        $deleted = true;
                     }
                     continue; // Lewati proses simpan
+                }
+
+                // Jika terkunci, lewati baris yang sudah ada (hanya tambah baru)
+                if ($isLocked && !empty($pendidikan['id'])) {
+                    continue;
                 }
 
                 if (empty($pendidikan['jenjang'])) {
@@ -1276,7 +1999,7 @@ class PegawaiController extends Controller
 
                 $filePath = $this->storeFile($request->file("pendidikan.{$index}.file"), 'pendidikan') ?? $pendidikan['old_file'] ?? null;
 
-                // Update jika ada id, jika tidak create baru
+                // Update jika ada id (hanya saat tidak terkunci), jika tidak create baru
                 if (!empty($pendidikan['id'])) {
                     $riw = \App\Models\RiwayatPendidikan::find($pendidikan['id']);
                     if ($riw) {
@@ -1317,6 +2040,8 @@ class PegawaiController extends Controller
      */
     private function storeRiwayatDiklat(Request $request, Pegawai $pegawai)
     {
+        $isLocked = (bool) $pegawai->is_locked_diklat;
+
         $validated = $request->validate([
             'diklat' => 'nullable|array',
             'diklat.*.nama' => 'required_with:diklat|string|max:255',
@@ -1325,27 +2050,46 @@ class PegawaiController extends Controller
             'diklat.*.tahun' => 'nullable|string|max:4',
             'diklat.*.file' => 'nullable|file|mimes:pdf|max:1024',
             'diklat.*.old_file' => 'nullable|string',
+            'diklat.*.id' => 'nullable|integer',
         ]);
 
-        RiwayatDiklat::where('pegawai_id', $pegawai->id)->delete();
+        if (!$isLocked) {
+            // Belum terkunci: hapus semua dan buat ulang
+            RiwayatDiklat::where('pegawai_id', $pegawai->id)->delete();
 
-        if (!empty($validated['diklat'])) {
-            foreach ($validated['diklat'] as $index => $diklat) {
-                if (empty($diklat['nama'])) {
-                    continue;
+            if (!empty($validated['diklat'])) {
+                foreach ($validated['diklat'] as $index => $diklat) {
+                    if (empty($diklat['nama'])) continue;
+                    RiwayatDiklat::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'nama_diklat' => $diklat['nama'],
+                        'penyelenggara' => $diklat['penyelenggara'],
+                        'no_sertifikat' => $diklat['nomor_sertifikat'] ?? null,
+                        'tahun' => $diklat['tahun'] ?? null,
+                        'dokumen' => $this->storeFile($request->file("diklat.{$index}.file"), 'diklat') ?? $diklat['old_file'] ?? null,
+                    ]);
                 }
-
-                RiwayatDiklat::create([
-                    'pegawai_id' => $pegawai->id,
-                    'nama_pegawai' => $pegawai->nama_lengkap,
-                    'nama_diklat' => $diklat['nama'],
-                    'penyelenggara' => $diklat['penyelenggara'],
-                    'no_sertifikat' => $diklat['nomor_sertifikat'] ?? null,
-                    'tahun' => $diklat['tahun'] ?? null,
-                    'dokumen' => $this->storeFile($request->file("diklat.{$index}.file"), 'diklat') ?? $diklat['old_file'] ?? null,
-                ]);
+            }
+        } else {
+            // Sudah terkunci: hanya tambah data baru (tanpa id)
+            if (!empty($validated['diklat'])) {
+                foreach ($validated['diklat'] as $index => $diklat) {
+                    if (!empty($diklat['id'])) continue; // Lewati baris yang sudah ada
+                    if (empty($diklat['nama'])) continue;
+                    RiwayatDiklat::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'nama_diklat' => $diklat['nama'],
+                        'penyelenggara' => $diklat['penyelenggara'],
+                        'no_sertifikat' => $diklat['nomor_sertifikat'] ?? null,
+                        'tahun' => $diklat['tahun'] ?? null,
+                        'dokumen' => $this->storeFile($request->file("diklat.{$index}.file"), 'diklat') ?? $diklat['old_file'] ?? null,
+                    ]);
+                }
             }
         }
+
     }
 
     /**
@@ -1353,6 +2097,8 @@ class PegawaiController extends Controller
      */
     private function storeRiwayatJabatan(Request $request, Pegawai $pegawai)
     {
+        $isLocked = (bool) $pegawai->is_locked_jabatan;
+
         $validated = $request->validate([
             'riwayat_jabatan' => 'nullable|array',
             'riwayat_jabatan.*.jenis_jabatan' => 'nullable|string|in:STRUKTURAL,JFT,JFU',
@@ -1362,34 +2108,90 @@ class PegawaiController extends Controller
             'riwayat_jabatan.*.tmt' => 'nullable|date',
             'riwayat_jabatan.*.file' => 'nullable|file|mimes:pdf|max:1024',
             'riwayat_jabatan.*.old_file' => 'nullable|string',
+            'riwayat_jabatan.*.id' => 'nullable|integer',
         ]);
 
-        RiwayatJabatan::where('pegawai_id', $pegawai->id)->delete();
+        if (!$isLocked) {
+            // Belum terkunci: hapus semua dan buat ulang
+            RiwayatJabatan::where('pegawai_id', $pegawai->id)->delete();
 
-        if (!empty($validated['riwayat_jabatan'])) {
-            foreach ($validated['riwayat_jabatan'] as $index => $jabatan) {
-                if (empty($jabatan['jenis_jabatan']) && empty($jabatan['nama_jabatan']) && empty($jabatan['no_sk'])) {
-                    continue;
+            if (!empty($validated['riwayat_jabatan'])) {
+                foreach ($validated['riwayat_jabatan'] as $index => $jabatan) {
+                    if (empty($jabatan['jenis_jabatan']) && empty($jabatan['nama_jabatan']) && empty($jabatan['no_sk'])) {
+                        continue;
+                    }
+                    $dokumen = $this->storeFile($request->file("riwayat_jabatan.{$index}.file"), 'jabatan');
+                    if (!$dokumen && !empty($jabatan['old_file'])) {
+                        $dokumen = $jabatan['old_file'];
+                    }
+                    RiwayatJabatan::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'jenis_jabatan' => $jabatan['jenis_jabatan'] ?? null,
+                        'nama_jabatan' => $jabatan['nama_jabatan'] ?? null,
+                        'eselon' => $jabatan['eselon'] ?? null,
+                        'unit_kerja_id' => null,
+                        'tmt' => $jabatan['tmt'] ?? null,
+                        'no_sk' => $jabatan['no_sk'] ?? null,
+                        'dokumen' => $dokumen,
+                    ]);
                 }
-
-                // Use new file if uploaded, otherwise preserve old file
-                $dokumen = $this->storeFile($request->file("riwayat_jabatan.{$index}.file"), 'jabatan');
-                if (!$dokumen && !empty($jabatan['old_file'])) {
-                    $dokumen = $jabatan['old_file'];
-                }
-
-                RiwayatJabatan::create([
-                    'pegawai_id' => $pegawai->id,
-                    'nama_pegawai' => $pegawai->nama_lengkap,
-                    'jenis_jabatan' => $jabatan['jenis_jabatan'] ?? null,
-                    'nama_jabatan' => $jabatan['nama_jabatan'] ?? null,
-                    'eselon' => $jabatan['eselon'] ?? null,
-                    'unit_kerja_id' => null,
-                    'tmt' => $jabatan['tmt'] ?? null,
-                    'no_sk' => $jabatan['no_sk'] ?? null,
-                    'dokumen' => $dokumen,
-                ]);
             }
+        } else {
+            // Sudah terkunci: hanya tambah data baru (tanpa id)
+            if (!empty($validated['riwayat_jabatan'])) {
+                foreach ($validated['riwayat_jabatan'] as $index => $jabatan) {
+                    if (!empty($jabatan['id'])) continue; // Lewati baris yang sudah ada
+                    if (empty($jabatan['jenis_jabatan']) && empty($jabatan['nama_jabatan']) && empty($jabatan['no_sk'])) {
+                        continue;
+                    }
+                    $dokumen = $this->storeFile($request->file("riwayat_jabatan.{$index}.file"), 'jabatan');
+                    if (!$dokumen && !empty($jabatan['old_file'])) {
+                        $dokumen = $jabatan['old_file'];
+                    }
+                    RiwayatJabatan::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'jenis_jabatan' => $jabatan['jenis_jabatan'] ?? null,
+                        'nama_jabatan' => $jabatan['nama_jabatan'] ?? null,
+                        'eselon' => $jabatan['eselon'] ?? null,
+                        'unit_kerja_id' => null,
+                        'tmt' => $jabatan['tmt'] ?? null,
+                        'no_sk' => $jabatan['no_sk'] ?? null,
+                        'dokumen' => $dokumen,
+                    ]);
+                }
+            }
+        }
+
+        $this->syncJabatanAktifFromRiwayat($pegawai);
+
+    }
+
+    private function syncJabatanAktifFromRiwayat(Pegawai $pegawai): void
+    {
+        $jabatanAktif = RiwayatJabatan::where('pegawai_id', $pegawai->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $newJenis = $jabatanAktif?->jenis_jabatan;
+        $newNama = $jabatanAktif?->nama_jabatan;
+        $newEselon = $jabatanAktif?->eselon;
+        $newTmt = $jabatanAktif?->tmt;
+
+        $hasChanged =
+            $pegawai->jenis_jabatan !== $newJenis ||
+            $pegawai->nama_jabatan !== $newNama ||
+            $pegawai->eselon_jabatan !== $newEselon ||
+            (string) $pegawai->tmt_jabatan !== (string) $newTmt;
+
+        $pegawai->jenis_jabatan = $newJenis;
+        $pegawai->nama_jabatan = $newNama;
+        $pegawai->eselon_jabatan = $newEselon;
+        $pegawai->tmt_jabatan = $newTmt;
+
+        if ($hasChanged) {
+            $pegawai->save();
         }
     }
 
@@ -1398,6 +2200,8 @@ class PegawaiController extends Controller
      */
     private function storeRiwayatPenghargaan(Request $request, Pegawai $pegawai)
     {
+        $isLocked = (bool) $pegawai->is_locked_penghargaan;
+
         $validated = $request->validate([
             'award' => 'nullable|array',
             'award.*.nama' => 'required_with:award|string|max:255',
@@ -1405,32 +2209,52 @@ class PegawaiController extends Controller
             'award.*.instansi' => 'required_with:award|string|max:255',
             'award.*.file' => 'nullable|file|mimes:pdf|max:1024',
             'award.*.old_file' => 'nullable|string',
+            'award.*.id' => 'nullable|integer',
         ]);
 
-        Penghargaan::where('pegawai_id', $pegawai->id)->delete();
+        if (!$isLocked) {
+            // Belum terkunci: hapus semua dan buat ulang
+            Penghargaan::where('pegawai_id', $pegawai->id)->delete();
 
-        if (!empty($validated['award'])) {
-            foreach ($validated['award'] as $index => $award) {
-                if (empty($award['nama'])) {
-                    continue;
+            if (!empty($validated['award'])) {
+                foreach ($validated['award'] as $index => $award) {
+                    if (empty($award['nama'])) continue;
+                    $dokumen = $this->storeFile($request->file("award.{$index}.file"), 'penghargaan');
+                    if (!$dokumen && !empty($award['old_file'])) {
+                        $dokumen = $award['old_file'];
+                    }
+                    Penghargaan::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'nama_penghargaan' => $award['nama'],
+                        'tahun' => $award['tahun'],
+                        'instansi_pemberi' => $award['instansi'],
+                        'dokumen' => $dokumen,
+                    ]);
                 }
-
-                // Use new file if uploaded, otherwise preserve old file
-                $dokumen = $this->storeFile($request->file("award.{$index}.file"), 'penghargaan');
-                if (!$dokumen && !empty($award['old_file'])) {
-                    $dokumen = $award['old_file'];
+            }
+        } else {
+            // Sudah terkunci: hanya tambah data baru (tanpa id)
+            if (!empty($validated['award'])) {
+                foreach ($validated['award'] as $index => $award) {
+                    if (!empty($award['id'])) continue; // Lewati baris yang sudah ada
+                    if (empty($award['nama'])) continue;
+                    $dokumen = $this->storeFile($request->file("award.{$index}.file"), 'penghargaan');
+                    if (!$dokumen && !empty($award['old_file'])) {
+                        $dokumen = $award['old_file'];
+                    }
+                    Penghargaan::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'nama_penghargaan' => $award['nama'],
+                        'tahun' => $award['tahun'],
+                        'instansi_pemberi' => $award['instansi'],
+                        'dokumen' => $dokumen,
+                    ]);
                 }
-
-                Penghargaan::create([
-                    'pegawai_id' => $pegawai->id,
-                    'nama_pegawai' => $pegawai->nama_lengkap,
-                    'nama_penghargaan' => $award['nama'],
-                    'tahun' => $award['tahun'],
-                    'instansi_pemberi' => $award['instansi'],
-                    'dokumen' => $dokumen,
-                ]);
             }
         }
+
     }
 
     /**
@@ -1438,6 +2262,8 @@ class PegawaiController extends Controller
      */
     private function storeRiwayatSertifikasi(Request $request, Pegawai $pegawai)
     {
+        $isLocked = (bool) $pegawai->is_locked_sertifikasi;
+
         $validated = $request->validate([
             'sertif' => 'nullable|array',
             'sertif.*.nama' => 'required_with:sertif|string|max:255',
@@ -1445,32 +2271,52 @@ class PegawaiController extends Controller
             'sertif.*.lembaga' => 'required_with:sertif|string|max:255',
             'sertif.*.file' => 'nullable|file|mimes:pdf|max:1024',
             'sertif.*.old_file' => 'nullable|string',
+            'sertif.*.id' => 'nullable|integer',
         ]);
 
-        Sertifikasi::where('pegawai_id', $pegawai->id)->delete();
+        if (!$isLocked) {
+            // Belum terkunci: hapus semua dan buat ulang
+            Sertifikasi::where('pegawai_id', $pegawai->id)->delete();
 
-        if (!empty($validated['sertif'])) {
-            foreach ($validated['sertif'] as $index => $sertif) {
-                if (empty($sertif['nama'])) {
-                    continue;
+            if (!empty($validated['sertif'])) {
+                foreach ($validated['sertif'] as $index => $sertif) {
+                    if (empty($sertif['nama'])) continue;
+                    $dokumen = $this->storeFile($request->file("sertif.{$index}.file"), 'sertifikasi');
+                    if (!$dokumen && !empty($sertif['old_file'])) {
+                        $dokumen = $sertif['old_file'];
+                    }
+                    Sertifikasi::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'nama_sertifikasi' => $sertif['nama'],
+                        'tahun' => $sertif['tahun'],
+                        'lembaga_pelaksana' => $sertif['lembaga'],
+                        'dokumen' => $dokumen,
+                    ]);
                 }
-
-                // Use new file if uploaded, otherwise preserve old file
-                $dokumen = $this->storeFile($request->file("sertif.{$index}.file"), 'sertifikasi');
-                if (!$dokumen && !empty($sertif['old_file'])) {
-                    $dokumen = $sertif['old_file'];
+            }
+        } else {
+            // Sudah terkunci: hanya tambah data baru (tanpa id)
+            if (!empty($validated['sertif'])) {
+                foreach ($validated['sertif'] as $index => $sertif) {
+                    if (!empty($sertif['id'])) continue; // Lewati baris yang sudah ada
+                    if (empty($sertif['nama'])) continue;
+                    $dokumen = $this->storeFile($request->file("sertif.{$index}.file"), 'sertifikasi');
+                    if (!$dokumen && !empty($sertif['old_file'])) {
+                        $dokumen = $sertif['old_file'];
+                    }
+                    Sertifikasi::create([
+                        'pegawai_id' => $pegawai->id,
+                        'nama_pegawai' => $pegawai->nama_lengkap,
+                        'nama_sertifikasi' => $sertif['nama'],
+                        'tahun' => $sertif['tahun'],
+                        'lembaga_pelaksana' => $sertif['lembaga'],
+                        'dokumen' => $dokumen,
+                    ]);
                 }
-
-                Sertifikasi::create([
-                    'pegawai_id' => $pegawai->id,
-                    'nama_pegawai' => $pegawai->nama_lengkap,
-                    'nama_sertifikasi' => $sertif['nama'],
-                    'tahun' => $sertif['tahun'],
-                    'lembaga_pelaksana' => $sertif['lembaga'],
-                    'dokumen' => $dokumen,
-                ]);
             }
         }
+
     }
 
     /**
@@ -1478,10 +2324,12 @@ class PegawaiController extends Controller
      */
     private function storeIdentitasLegal(Request $request, Pegawai $pegawai)
     {
+
         $validated = $request->validate([
-            'nik_ktp' => 'nullable|string|max:16',
+            'nik_ktp' => 'nullable|digits:16',
             'nomor_npwp' => 'nullable|string|max:20',
             'nomor_bpjs' => 'nullable|string|max:20',
+            'nomor_kk' => 'nullable|string|max:20',
             'file_ktp' => 'nullable|file|mimes:pdf|max:1024',
             'file_npwp' => 'nullable|file|mimes:pdf|max:1024',
             'file_bpjs' => 'nullable|file|mimes:pdf|max:1024',
@@ -1490,24 +2338,90 @@ class PegawaiController extends Controller
 
         $existing = IdentitasLegal::where('pegawai_id', $pegawai->id)->first();
 
-        $dokKtp = $this->storeFile($request->file('file_ktp'), 'identitas') ?: ($existing?->dok_ktp);
-        $dokNpwp = $this->storeFile($request->file('file_npwp'), 'identitas') ?: ($existing?->dok_npwp);
-        $dokBpjs = $this->storeFile($request->file('file_bpjs'), 'identitas') ?: ($existing?->dok_bpjs);
-        $dokKk = $this->storeFile($request->file('file_kk'), 'identitas') ?: ($existing?->dok_kk);
+        $data = [
+            'nama_pegawai' => $pegawai->nama_lengkap ?: Session::get('name'),
+            'no_ktp' => $existing?->no_ktp,
+            'no_npwp' => $existing?->no_npwp,
+            'no_bpjs' => $existing?->no_bpjs,
+            'no_kk' => $existing?->no_kk,
+            'dok_ktp' => $existing?->dok_ktp,
+            'dok_npwp' => $existing?->dok_npwp,
+            'dok_bpjs' => $existing?->dok_bpjs,
+            'dok_kk' => $existing?->dok_kk,
+        ];
 
+        // Hapus dokumen jika field dikosongkan
+        if ($request->has('nik_ktp') && $validated['nik_ktp'] === null) {
+            if ($existing && $existing->dok_ktp && \Storage::disk('public')->exists($existing->dok_ktp)) {
+                \Storage::disk('public')->delete($existing->dok_ktp);
+            }
+            $data['dok_ktp'] = null;
+        }
+        if ($request->has('nomor_npwp') && (empty($validated['nomor_npwp']) || $validated['nomor_npwp'] === null)) {
+            if ($existing && $existing->dok_npwp && \Storage::disk('public')->exists($existing->dok_npwp)) {
+                \Storage::disk('public')->delete($existing->dok_npwp);
+            }
+            $data['dok_npwp'] = null;
+        }
+        if ($request->has('nomor_bpjs') && (empty($validated['nomor_bpjs']) || $validated['nomor_bpjs'] === null)) {
+            if ($existing && $existing->dok_bpjs && \Storage::disk('public')->exists($existing->dok_bpjs)) {
+                \Storage::disk('public')->delete($existing->dok_bpjs);
+            }
+            $data['dok_bpjs'] = null;
+        }
+        if ($request->has('nomor_kk') && (empty($validated['nomor_kk']) || $validated['nomor_kk'] === null)) {
+            if ($existing && $existing->dok_kk && \Storage::disk('public')->exists($existing->dok_kk)) {
+                \Storage::disk('public')->delete($existing->dok_kk);
+            }
+            $data['dok_kk'] = null;
+        }
+
+        // Update only the field that is present in the request
+        if ($request->has('nik_ktp')) {
+            $data['no_ktp'] = $validated['nik_ktp'];
+        }
+        if ($request->has('nomor_npwp')) {
+            $data['no_npwp'] = $validated['nomor_npwp'];
+        }
+        if ($request->has('nomor_bpjs')) {
+            $data['no_bpjs'] = $validated['nomor_bpjs'];
+        }
+        if ($request->has('nomor_kk')) {
+            $data['no_kk'] = $validated['nomor_kk'];
+        }
+        if ($request->hasFile('file_ktp')) {
+            $data['dok_ktp'] = $this->storeFile($request->file('file_ktp'), 'identitas');
+        }
+        if ($request->hasFile('file_npwp')) {
+            $data['dok_npwp'] = $this->storeFile($request->file('file_npwp'), 'identitas');
+        }
+        if ($request->hasFile('file_bpjs')) {
+            $data['dok_bpjs'] = $this->storeFile($request->file('file_bpjs'), 'identitas');
+        }
+        if ($request->hasFile('file_kk')) {
+            $data['dok_kk'] = $this->storeFile($request->file('file_kk'), 'identitas');
+        }
+
+        // Kunci data hanya jika request dari tombol "Simpan Semua Data"
+        if ($request->input('lock_drh') === '1') {
+            $data['is_locked_legal'] = true;
+        }
         IdentitasLegal::updateOrCreate(
             ['pegawai_id' => $pegawai->id],
-            [
-                'nama_pegawai' => $pegawai->nama_lengkap ?: Session::get('name'),
-                'no_ktp' => $validated['nik_ktp'] ?? null,
-                'no_npwp' => $validated['nomor_npwp'] ?? null,
-                'no_bpjs' => $validated['nomor_bpjs'] ?? null,
-                'dok_ktp' => $dokKtp,
-                'dok_npwp' => $dokNpwp,
-                'dok_bpjs' => $dokBpjs,
-                'dok_kk' => $dokKk,
-            ]
+            $data
         );
+
+        // Kunci semua section DRH pegawai sekaligus — hanya jika lock_drh=1
+        if ($request->input('lock_drh') === '1') {
+            $pegawai->is_locked_keluarga    = true;
+            $pegawai->is_locked_pendidikan  = true;
+            $pegawai->is_locked_diklat      = true;
+            $pegawai->is_locked_jabatan     = true;
+            $pegawai->is_locked_penghargaan = true;
+            $pegawai->is_locked_sertifikasi = true;
+            $pegawai->is_drh_locked         = true;
+            $pegawai->save();
+        }
     }
 
     /**
@@ -1797,7 +2711,14 @@ class PegawaiController extends Controller
             return redirect('/login');
         }
 
-        $documents = Document::with('user')->latest('uploaded_at')->get();
+        // Hanya tampilkan dokumen dengan status Pending (Menunggu)
+        // Diurutkan dari terlama ke terbaru
+        $documents = Document::with('user')
+            ->where('status', 'Pending')
+            ->oldest('uploaded_at')
+            ->get();
+        
+        // Hitung total status untuk statistik
         $pendingCount = Document::where('status', 'Pending')->count();
         $approvedCount = Document::where('status', 'Approved')->count();
         $rejectedCount = Document::where('status', 'Rejected')->count();
@@ -1829,6 +2750,12 @@ class PegawaiController extends Controller
             'is_active' => true,
         ]);
 
+        // Cek apakah ada parameter return_to untuk redirect ke halaman kelola arsip pegawai
+        $returnTo = request()->input('return_to');
+        if ($returnTo && strpos($returnTo, '/admin/pegawai/') !== false) {
+            return redirect($returnTo)->with('success', 'Dokumen berhasil disetujui.');
+        }
+
         return redirect('/admin/validasi-dokumen')->with('success', 'Dokumen berhasil disetujui.');
     }
 
@@ -1854,6 +2781,12 @@ class PegawaiController extends Controller
             'rejection_reason' => $request->reason,
         ]);
 
+        // Cek apakah ada parameter return_to untuk redirect ke halaman kelola arsip pegawai
+        $returnTo = $request->input('return_to');
+        if ($returnTo && strpos($returnTo, '/admin/pegawai/') !== false) {
+            return redirect($returnTo)->with('success', 'Dokumen berhasil ditolak.');
+        }
+
         return redirect('/admin/validasi-dokumen')->with('success', 'Dokumen berhasil ditolak.');
     }
 
@@ -1870,6 +2803,20 @@ class PegawaiController extends Controller
         $drhData = $this->buildAdminDrhData($user);
 
         return view('dashboard.admin_pegawai_drh', compact('user', 'drhData'));
+    }
+
+    public function adminViewPegawaiDrhByPegawaiId($pegawaiId)
+    {
+        if (!Session::has('role') || !in_array(Session::get('role'), ['admin', 'superadmin'])) {
+            return redirect('/login');
+        }
+
+        $user = User::where('pegawai_id', $pegawaiId)->first();
+        if (!$user) {
+            return redirect()->back()->with('error', 'Akun user untuk pegawai ini tidak ditemukan.');
+        }
+
+        return redirect('/admin/pegawai/' . $user->id . '/drh');
     }
 
     /**
@@ -1926,6 +2873,9 @@ class PegawaiController extends Controller
         if (!$drhData) {
             return null;
         }
+
+        $this->syncJabatanAktifFromRiwayat($drhData);
+        $this->syncKeluargaJsonFromTables($drhData);
 
         $drhData->riwayat_pendidikan = $drhData->riwayatPendidikans->map(function ($item) {
             return [
@@ -1991,6 +2941,7 @@ class PegawaiController extends Controller
             'nik_ktp' => $drhData->identitasLegal?->no_ktp,
             'nomor_npwp' => $drhData->identitasLegal?->no_npwp,
             'nomor_bpjs' => $drhData->identitasLegal?->no_bpjs,
+            'nomor_kk' => $drhData->identitasLegal?->no_kk,
             'file_ktp' => $drhData->identitasLegal?->dok_ktp,
             'file_npwp' => $drhData->identitasLegal?->dok_npwp,
             'file_bpjs' => $drhData->identitasLegal?->dok_bpjs,
@@ -2171,6 +3122,7 @@ class PegawaiController extends Controller
 
         $pegawai = User::with(['pegawai'])
             ->where('role', 'pegawai')
+            ->where('is_active', true)
             ->get()
             ->sortBy(function ($user) use ($golonganOrder, $eselonOrder) {
                 $gol = $user->pegawai?->golongan_pangkat ?? '';
@@ -2242,6 +3194,780 @@ class PegawaiController extends Controller
         $data = \App\Models\Penghargaan::findOrFail($id);
         $data->delete();
         return response()->json(['status' => 'success', 'message' => 'data berhasil dihapus! segera perbarui']);
+    }
+
+    // Hapus Riwayat Sertifikasi
+    public function deleteRiwayatSertifikasi($id)
+    {
+        $data = \App\Models\Sertifikasi::findOrFail($id);
+        if ($data->dokumen && \Storage::disk('public')->exists($data->dokumen)) {
+            \Storage::disk('public')->delete($data->dokumen);
+        }
+        $data->delete();
+        return response()->json(['status' => 'success', 'message' => 'data berhasil dihapus! segera perbarui']);
+    }
+
+    // Update Riwayat Pendidikan
+    public function updateRiwayatPendidikan(Request $request, $id)
+    {
+        $data = \App\Models\RiwayatPendidikan::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($data->pegawai_id !== $pegawai->id, 403);
+
+        $request->validate([
+            'nama_instansi'  => 'required|string|max:255',
+            'tahun_masuk'    => 'nullable|digits:4',
+            'tahun_keluar'   => 'nullable|digits:4',
+            'no_ijazah'      => 'nullable|string|max:100',
+            'nama_pejabat'   => 'nullable|string|max:255',
+            'file'           => 'nullable|file|mimes:pdf|max:1024',
+        ]);
+
+        if ($request->hasFile('file')) {
+            if ($data->dokumen && \Storage::disk('public')->exists($data->dokumen)) {
+                \Storage::disk('public')->delete($data->dokumen);
+            }
+            $data->dokumen = $this->storeFile($request->file('file'), 'pendidikan');
+        }
+        $data->nama_instansi = $request->nama_instansi;
+        $data->tahun_masuk   = $request->tahun_masuk;
+        $data->tahun_keluar  = $request->tahun_keluar;
+        $data->no_ijazah     = $request->no_ijazah;
+        $data->nama_pejabat  = $request->nama_pejabat;
+        $data->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Data pendidikan berhasil diperbarui.', 'data' => [
+            'nama_instansi' => $data->nama_instansi,
+            'tahun_masuk'   => $data->tahun_masuk,
+            'tahun_lulus'   => $data->tahun_keluar,
+            'no_ijazah'     => $data->no_ijazah,
+            'nama_pejabat'  => $data->nama_pejabat,
+            'file_url'      => $data->dokumen ? \Storage::disk('public')->url($data->dokumen) : null,
+        ]]);
+    }
+
+    // Update Riwayat Diklat
+    public function updateRiwayatDiklat(Request $request, $id)
+    {
+        $data = \App\Models\RiwayatDiklat::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($data->pegawai_id !== $pegawai->id, 403);
+
+        $request->validate([
+            'nama_diklat'    => 'required|string|max:255',
+            'penyelenggara'  => 'nullable|string|max:255',
+            'no_sertifikat'  => 'nullable|string|max:100',
+            'tahun'          => 'nullable|digits:4',
+            'file'           => 'nullable|file|mimes:pdf|max:1024',
+        ]);
+
+        if ($request->hasFile('file')) {
+            if ($data->dokumen && \Storage::disk('public')->exists($data->dokumen)) {
+                \Storage::disk('public')->delete($data->dokumen);
+            }
+            $data->dokumen = $this->storeFile($request->file('file'), 'diklat');
+        }
+        $data->nama_diklat   = $request->nama_diklat;
+        $data->penyelenggara = $request->penyelenggara;
+        $data->no_sertifikat = $request->no_sertifikat;
+        $data->tahun         = $request->tahun;
+        $data->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Data diklat berhasil diperbarui.', 'data' => [
+            'nama'           => $data->nama_diklat,
+            'penyelenggara'  => $data->penyelenggara,
+            'nomor_sertifikat' => $data->no_sertifikat,
+            'tahun'          => $data->tahun,
+            'file_url'       => $data->dokumen ? \Storage::disk('public')->url($data->dokumen) : null,
+        ]]);
+    }
+
+    // Update Riwayat Jabatan
+    public function updateRiwayatJabatan(Request $request, $id)
+    {
+        $data = \App\Models\RiwayatJabatan::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($data->pegawai_id !== $pegawai->id, 403);
+
+        $request->validate([
+            'jenis_jabatan'  => 'nullable|string|max:100',
+            'nama_jabatan'   => 'required|string|max:255',
+            'eselon'         => 'nullable|string|max:50',
+            'tmt'            => 'nullable|date',
+            'no_sk'          => 'nullable|string|max:100',
+            'file'           => 'nullable|file|mimes:pdf|max:1024',
+        ]);
+
+        if ($request->hasFile('file')) {
+            if ($data->dokumen && \Storage::disk('public')->exists($data->dokumen)) {
+                \Storage::disk('public')->delete($data->dokumen);
+            }
+            $data->dokumen = $this->storeFile($request->file('file'), 'jabatan');
+        }
+        $data->jenis_jabatan = $request->jenis_jabatan;
+        $data->nama_jabatan  = $request->nama_jabatan;
+        $data->eselon        = $request->eselon;
+        $data->tmt           = $request->tmt;
+        $data->no_sk         = $request->no_sk;
+        $data->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Data jabatan berhasil diperbarui.', 'data' => [
+            'jenis_jabatan'  => $data->jenis_jabatan,
+            'nama_jabatan'   => $data->nama_jabatan,
+            'eselon'         => $data->eselon,
+            'tmt'            => $data->tmt,
+            'no_sk'          => $data->no_sk,
+            'file_url'       => $data->dokumen ? \Storage::disk('public')->url($data->dokumen) : null,
+        ]]);
+    }
+
+    // Update Riwayat Penghargaan
+    public function updateRiwayatPenghargaan(Request $request, $id)
+    {
+        $data = \App\Models\Penghargaan::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($data->pegawai_id !== $pegawai->id, 403);
+
+        $request->validate([
+            'nama_penghargaan' => 'required|string|max:255',
+            'tahun'            => 'nullable|digits:4',
+            'instansi_pemberi' => 'nullable|string|max:255',
+            'file'             => 'nullable|file|mimes:pdf|max:1024',
+        ]);
+
+        if ($request->hasFile('file')) {
+            if ($data->dokumen && \Storage::disk('public')->exists($data->dokumen)) {
+                \Storage::disk('public')->delete($data->dokumen);
+            }
+            $data->dokumen = $this->storeFile($request->file('file'), 'penghargaan');
+        }
+        $data->nama_penghargaan = $request->nama_penghargaan;
+        $data->tahun            = $request->tahun;
+        $data->instansi_pemberi = $request->instansi_pemberi;
+        $data->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Data penghargaan berhasil diperbarui.', 'data' => [
+            'nama'     => $data->nama_penghargaan,
+            'tahun'    => $data->tahun,
+            'instansi' => $data->instansi_pemberi,
+            'file_url' => $data->dokumen ? \Storage::disk('public')->url($data->dokumen) : null,
+        ]]);
+    }
+
+    // Update Riwayat Sertifikasi
+    public function updateRiwayatSertifikasi(Request $request, $id)
+    {
+        $data = \App\Models\Sertifikasi::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($data->pegawai_id !== $pegawai->id, 403);
+
+        $request->validate([
+            'nama_sertifikasi' => 'required|string|max:255',
+            'tahun'            => 'nullable|digits:4',
+            'lembaga_pelaksana' => 'nullable|string|max:255',
+            'file'             => 'nullable|file|mimes:pdf|max:1024',
+        ]);
+
+        if ($request->hasFile('file')) {
+            if ($data->dokumen && \Storage::disk('public')->exists($data->dokumen)) {
+                \Storage::disk('public')->delete($data->dokumen);
+            }
+            $data->dokumen = $this->storeFile($request->file('file'), 'sertifikasi');
+        }
+        $data->nama_sertifikasi  = $request->nama_sertifikasi;
+        $data->tahun             = $request->tahun;
+        $data->lembaga_pelaksana = $request->lembaga_pelaksana;
+        $data->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Data sertifikasi berhasil diperbarui.', 'data' => [
+            'nama'     => $data->nama_sertifikasi,
+            'tahun'    => $data->tahun,
+            'lembaga'  => $data->lembaga_pelaksana,
+            'file_url' => $data->dokumen ? \Storage::disk('public')->url($data->dokumen) : null,
+        ]]);
+    }
+    public function deleteAnak($id)
+    {
+        $anak = \App\Models\Anak::findOrFail($id);
+        // Pastikan hanya pemiliknya yang bisa hapus
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($anak->pegawai_id !== $pegawai->id, 403);
+        abort_if($pegawai->is_locked_keluarga, 403, 'Data keluarga sudah terkunci.');
+
+        if ($anak->file && \Storage::disk('public')->exists($anak->file)) {
+            \Storage::disk('public')->delete($anak->file);
+        }
+        $anak->delete();
+
+        // Sync data_keluarga JSON
+        $this->syncKeluargaJsonFromTables($pegawai);
+
+        return response()->json(['status' => 'success', 'message' => 'Data anak berhasil dihapus.']);
+    }
+
+    // Update satu data anak
+    public function updateAnak(Request $request, $id)
+    {
+        $anak = \App\Models\Anak::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($anak->pegawai_id !== $pegawai->id, 403);
+        abort_if($pegawai->is_locked_keluarga, 403, 'Data keluarga sudah terkunci.');
+
+        $validated = $request->validate([
+            'nama'          => 'required|string|max:255',
+            'nik'           => 'nullable|digits:16',
+            'jenis_kelamin' => 'nullable|in:L,P',
+            'tempat_lahir'  => 'nullable|string|max:100',
+            'tanggal_lahir' => 'nullable|date',
+            'pekerjaan'     => 'nullable|string|max:100',
+            'status_anak'   => 'nullable|in:Kandung,Tiri,Angkat',
+            'status_kawin'  => 'nullable|in:Belum Menikah,Menikah,Cerai Hidup,Cerai Mati',
+            'file'          => 'nullable|file|mimes:pdf|max:1024',
+        ]);
+
+        $filePath = $anak->file;
+        if ($request->hasFile('file')) {
+            if ($filePath && \Storage::disk('public')->exists($filePath)) {
+                \Storage::disk('public')->delete($filePath);
+            }
+            $filePath = $this->storeFile($request->file('file'), 'keluarga/anak');
+        }
+
+        $anak->update([
+            'nik'           => $validated['nik'] ?? null,
+            'nama'          => $validated['nama'],
+            'jenis_kelamin' => $validated['jenis_kelamin'] ?? null,
+            'tempat_lahir'  => $validated['tempat_lahir'] ?? null,
+            'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+            'pekerjaan'     => $validated['pekerjaan'] ?? null,
+            'status_anak'   => $validated['status_anak'] ?? null,
+            'status_kawin'  => $validated['status_kawin'] ?? null,
+            'file'          => $filePath,
+        ]);
+
+        // Sync data_keluarga JSON
+        $this->syncKeluargaJsonFromTables($pegawai);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Data anak berhasil diperbarui.',
+            'data'    => [
+                'id'            => $anak->id,
+                'nik'           => $anak->nik,
+                'nama'          => $anak->nama,
+                'jenis_kelamin' => $anak->jenis_kelamin,
+                'tempat_lahir'  => $anak->tempat_lahir,
+                'tanggal_lahir' => $anak->tanggal_lahir,
+                'pekerjaan'     => $anak->pekerjaan,
+                'status_anak'   => $anak->status_anak,
+                'status_kawin'  => $anak->status_kawin,
+                'file'          => $anak->file,
+                'file_url'      => $anak->file ? \Storage::disk('public')->url($anak->file) : null,
+            ],
+        ]);
+    }
+
+    // Hapus satu data saudara
+    public function deleteSaudara($id)
+    {
+        $saudara = \App\Models\Saudara::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($saudara->pegawai_id !== $pegawai->id, 403);
+        abort_if($pegawai->is_locked_keluarga, 403, 'Data keluarga sudah terkunci.');
+
+        $saudara->delete();
+
+        // Sync data_keluarga JSON
+        $this->syncKeluargaJsonFromTables($pegawai);
+
+        return response()->json(['status' => 'success', 'message' => 'Data saudara berhasil dihapus.']);
+    }
+
+    // Update satu data saudara
+    public function updateSaudara(Request $request, $id)
+    {
+        $saudara = \App\Models\Saudara::findOrFail($id);
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($saudara->pegawai_id !== $pegawai->id, 403);
+        abort_if($pegawai->is_locked_keluarga, 403, 'Data keluarga sudah terkunci.');
+
+        $validated = $request->validate([
+            'nama'           => 'required|string|max:255',
+            'nik'            => 'nullable|digits:16',
+            'jenis_kelamin'  => 'nullable|in:P,L',
+            'tempat_lahir'   => 'nullable|string|max:100',
+            'tanggal_lahir'  => 'nullable|date',
+            'pekerjaan'      => 'nullable|string|max:100',
+            'status_saudara' => 'nullable|in:Kandung,Tiri,Angkat',
+            'status_kawin'   => 'nullable|in:Belum Menikah,Menikah,Cerai Hidup,Cerai Mati',
+            'file'           => 'nullable|file|mimes:pdf|max:1024',
+        ]);
+
+        $filePath = $saudara->file;
+        if ($request->hasFile('file')) {
+            if ($filePath && \Storage::disk('public')->exists($filePath)) {
+                \Storage::disk('public')->delete($filePath);
+            }
+            $filePath = $this->storeFile($request->file('file'), 'keluarga/saudara');
+        }
+
+        $saudara->update([
+            'nik'           => $validated['nik'] ?? null,
+            'nama'          => $validated['nama'],
+            'jenis_kelamin' => $validated['jenis_kelamin'] ?? null,
+            'tempat_lahir'  => $validated['tempat_lahir'] ?? null,
+            'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+            'pekerjaan'     => $validated['pekerjaan'] ?? null,
+            'status_hub'    => $validated['status_saudara'] ?? null,
+            'status_kawin'  => $validated['status_kawin'] ?? null,
+            'file'          => $filePath,
+        ]);
+
+        // Sync data_keluarga JSON
+        $this->syncKeluargaJsonFromTables($pegawai);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Data saudara berhasil diperbarui.',
+            'data'    => [
+                'id'             => $saudara->id,
+                'nik'            => $saudara->nik,
+                'nama'           => $saudara->nama,
+                'jenis_kelamin'  => $saudara->jenis_kelamin,
+                'tempat_lahir'   => $saudara->tempat_lahir,
+                'tanggal_lahir'  => $saudara->tanggal_lahir,
+                'pekerjaan'      => $saudara->pekerjaan,
+                'status_saudara' => $saudara->status_hub,
+                'status_kawin'   => $saudara->status_kawin,
+                'file'           => $saudara->file,
+                'file_url'       => $saudara->file ? \Storage::disk('public')->url($saudara->file) : null,
+            ],
+        ]);
+    }
+
+    public function storeKeluargaMember(Request $request, string $type)
+    {
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+
+        if ($type === 'pasangan') {
+            $validated = $request->validate([
+                'nik'           => 'nullable|digits:16',
+                'nama'          => 'required|string|max:255',
+                'status'        => 'nullable|in:SUAMI,ISTRI',
+                'status_hidup'  => 'nullable|in:Hidup,Meninggal',
+                'tempat_lahir'  => 'nullable|string|max:100',
+                'tanggal_lahir' => 'nullable|date',
+                'pekerjaan'     => 'nullable|string|max:100',
+                'no_akta_nikah' => 'nullable|string|max:255',
+            ]);
+
+            Pasangan::where('pegawai_id', $pegawai->id)->delete();
+            $pasangan = Pasangan::create([
+                'pegawai_id'    => $pegawai->id,
+                'nama_pegawai'  => $pegawai->nama_lengkap,
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'status'        => $validated['status'] ?? null,
+                'status_hidup'  => $validated['status_hidup'] ?? null,
+                'tempat_lahir'  => $validated['tempat_lahir'] ?? null,
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+                'no_akta_nikah' => $validated['no_akta_nikah'] ?? null,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Data pasangan berhasil disimpan.',
+                'data'    => [
+                    'id'            => $pasangan->id,
+                    'nik'           => $pasangan->nik,
+                    'nama'          => $pasangan->nama,
+                    'status'        => $pasangan->status,
+                    'status_hidup'  => $pasangan->status_hidup,
+                    'tempat_lahir'  => $pasangan->tempat_lahir,
+                    'tanggal_lahir' => $pasangan->tanggal_lahir,
+                    'pekerjaan'     => $pasangan->pekerjaan,
+                    'no_akta_nikah' => $pasangan->no_akta_nikah,
+                ],
+            ]);
+        }
+
+        if ($type === 'orang-tua') {
+            $validated = $request->validate([
+                'nik'           => 'nullable|digits:16',
+                'nama'          => 'required|string|max:255',
+                'alamat'        => 'nullable|string|max:255',
+                'tanggal_lahir' => 'nullable|date',
+                'status_hidup'  => 'nullable|in:Hidup,Meninggal',
+                'pekerjaan'     => 'nullable|string|max:100',
+                'status_hub'    => 'nullable|in:Ayah,Ibu',
+            ]);
+
+            $statusHub = $validated['status_hub'] ?? 'Ayah';
+            OrangTua::where('pegawai_id', $pegawai->id)->where('status_hub', $statusHub)->delete();
+
+            $orangTua = OrangTua::create([
+                'pegawai_id'    => $pegawai->id,
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'alamat'        => $validated['alamat'] ?? null,
+                'tempat_lahir'  => null,
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'status_hidup'  => $validated['status_hidup'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+                'status_hub'    => $statusHub,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Data orang tua berhasil disimpan.',
+                'data'    => [
+                    'id'            => $orangTua->id,
+                    'nik'           => $orangTua->nik,
+                    'nama'          => $orangTua->nama,
+                    'alamat'        => $orangTua->alamat,
+                    'tanggal_lahir' => $orangTua->tanggal_lahir,
+                    'status_hidup'  => $orangTua->status_hidup,
+                    'pekerjaan'     => $orangTua->pekerjaan,
+                    'status_hub'    => $orangTua->status_hub,
+                ],
+            ]);
+        }
+
+        if ($type === 'mertua') {
+            $validated = $request->validate([
+                'nik'           => 'nullable|digits:16',
+                'nama'          => 'required|string|max:255',
+                'tanggal_lahir' => 'nullable|date',
+                'status_hidup'  => 'nullable|in:Hidup,Meninggal',
+                'pekerjaan'     => 'nullable|string|max:100',
+                'status_hub'    => 'nullable|in:Ayah Mertua,Ibu Mertua',
+            ]);
+
+            $statusHub = $validated['status_hub'] ?? 'Ayah Mertua';
+            Mertua::where('pegawai_id', $pegawai->id)->where('status_hub', $statusHub)->delete();
+
+            $mertua = Mertua::create([
+                'pegawai_id'    => $pegawai->id,
+                'nama_pegawai'  => $pegawai->nama_lengkap,
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'tempat_lahir'  => null,
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'status_hidup'  => $validated['status_hidup'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+                'status_hub'    => $statusHub,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Data mertua berhasil disimpan.',
+                'data'    => [
+                    'id'            => $mertua->id,
+                    'nik'           => $mertua->nik,
+                    'nama'          => $mertua->nama,
+                    'tanggal_lahir' => $mertua->tanggal_lahir,
+                    'status_hidup'  => $mertua->status_hidup,
+                    'pekerjaan'     => $mertua->pekerjaan,
+                    'status_hub'    => $mertua->status_hub,
+                ],
+            ]);
+        }
+
+        if ($type === 'anak') {
+            $validated = $request->validate([
+                'nik'           => 'nullable|digits:16',
+                'nama'          => 'required|string|max:255',
+                'jenis_kelamin' => 'nullable|in:L,P',
+                'tempat_lahir'  => 'nullable|string|max:100',
+                'tanggal_lahir' => 'nullable|date',
+                'pekerjaan'     => 'nullable|string|max:100',
+                'status_anak'   => 'nullable|in:Kandung,Tiri,Angkat',
+                'status_kawin'  => 'nullable|in:Belum Menikah,Menikah,Cerai Hidup,Cerai Mati',
+                'file'          => 'nullable|file|mimes:pdf|max:1024',
+            ]);
+
+            $filePath = null;
+            if ($request->hasFile('file')) {
+                $filePath = $this->storeFile($request->file('file'), 'keluarga/anak');
+            }
+
+            $anak = Anak::create([
+                'pegawai_id'    => $pegawai->id,
+                'nama_pegawai'  => $pegawai->nama_lengkap,
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'jenis_kelamin' => $validated['jenis_kelamin'] ?? null,
+                'tempat_lahir'  => $validated['tempat_lahir'] ?? null,
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+                'status_anak'   => $validated['status_anak'] ?? null,
+                'status_kawin'  => $validated['status_kawin'] ?? null,
+                'file'          => $filePath,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Data anak berhasil disimpan.',
+                'data'    => [
+                    'id'            => $anak->id,
+                    'nik'           => $anak->nik,
+                    'nama'          => $anak->nama,
+                    'jenis_kelamin' => $anak->jenis_kelamin,
+                    'tempat_lahir'  => $anak->tempat_lahir,
+                    'tanggal_lahir' => $anak->tanggal_lahir,
+                    'pekerjaan'     => $anak->pekerjaan,
+                    'status_anak'   => $anak->status_anak,
+                    'status_kawin'  => $anak->status_kawin,
+                    'file'          => $anak->file,
+                    'file_url'      => $anak->file ? \Storage::disk('public')->url($anak->file) : null,
+                ],
+            ]);
+        }
+
+        if ($type === 'saudara') {
+            $validated = $request->validate([
+                'nik'            => 'nullable|digits:16',
+                'nama'           => 'required|string|max:255',
+                'jenis_kelamin'  => 'nullable|in:P,L',
+                'tempat_lahir'   => 'nullable|string|max:100',
+                'tanggal_lahir'  => 'nullable|date',
+                'pekerjaan'      => 'nullable|string|max:100',
+                'status_saudara' => 'nullable|in:Kandung,Tiri,Angkat',
+                'status_kawin'   => 'nullable|in:Belum Menikah,Menikah,Cerai Hidup,Cerai Mati',
+            ]);
+
+            $saudara = Saudara::create([
+                'pegawai_id'    => $pegawai->id,
+                'nama_pegawai'  => $pegawai->nama_lengkap,
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'jenis_kelamin' => $validated['jenis_kelamin'] ?? null,
+                'tempat_lahir'  => $validated['tempat_lahir'] ?? null,
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+                'status_hub'    => $validated['status_saudara'] ?? null,
+                'status_kawin'  => $validated['status_kawin'] ?? null,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Data saudara berhasil disimpan.',
+                'data'    => [
+                    'id'             => $saudara->id,
+                    'nik'            => $saudara->nik,
+                    'nama'           => $saudara->nama,
+                    'jenis_kelamin'  => $saudara->jenis_kelamin,
+                    'tempat_lahir'   => $saudara->tempat_lahir,
+                    'tanggal_lahir'  => $saudara->tanggal_lahir,
+                    'pekerjaan'      => $saudara->pekerjaan,
+                    'status_saudara' => $saudara->status_hub,
+                    'status_kawin'   => $saudara->status_kawin,
+                    'file'           => null,
+                    'file_url'       => null,
+                ],
+            ]);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'Tipe data keluarga tidak valid.'], 422);
+    }
+
+    public function updateKeluargaMember(Request $request, string $type, $id)
+    {
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+
+        if ($type === 'pasangan') {
+            $pasangan = Pasangan::findOrFail($id);
+            abort_if($pasangan->pegawai_id !== $pegawai->id, 403);
+
+            $validated = $request->validate([
+                'nik'           => 'nullable|digits:16',
+                'nama'          => 'required|string|max:255',
+                'status'        => 'nullable|in:SUAMI,ISTRI',
+                'status_hidup'  => 'nullable|in:Hidup,Meninggal',
+                'tempat_lahir'  => 'nullable|string|max:100',
+                'tanggal_lahir' => 'nullable|date',
+                'pekerjaan'     => 'nullable|string|max:100',
+                'no_akta_nikah' => 'nullable|string|max:255',
+            ]);
+
+            $pasangan->update([
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'status'        => $validated['status'] ?? null,
+                'status_hidup'  => $validated['status_hidup'] ?? null,
+                'tempat_lahir'  => $validated['tempat_lahir'] ?? null,
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+                'no_akta_nikah' => $validated['no_akta_nikah'] ?? null,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Data pasangan berhasil diperbarui.',
+                'data' => [
+                    'id'            => $pasangan->id,
+                    'nik'           => $pasangan->nik,
+                    'nama'          => $pasangan->nama,
+                    'status'        => $pasangan->status,
+                    'status_hidup'  => $pasangan->status_hidup,
+                    'tempat_lahir'  => $pasangan->tempat_lahir,
+                    'tanggal_lahir' => $pasangan->tanggal_lahir,
+                    'pekerjaan'     => $pasangan->pekerjaan,
+                    'no_akta_nikah' => $pasangan->no_akta_nikah,
+                ],
+            ]);
+        }
+
+        if ($type === 'orang-tua') {
+            $orangTua = OrangTua::findOrFail($id);
+            abort_if($orangTua->pegawai_id !== $pegawai->id, 403);
+
+            $validated = $request->validate([
+                'nik'           => 'nullable|digits:16',
+                'nama'          => 'required|string|max:255',
+                'alamat'        => 'nullable|string|max:255',
+                'tanggal_lahir' => 'nullable|date',
+                'status_hidup'  => 'nullable|in:Hidup,Meninggal',
+                'pekerjaan'     => 'nullable|string|max:100',
+            ]);
+
+            $orangTua->update([
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'alamat'        => $validated['alamat'] ?? null,
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'status_hidup'  => $validated['status_hidup'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Data orang tua berhasil diperbarui.',
+                'data' => [
+                    'id'            => $orangTua->id,
+                    'nik'           => $orangTua->nik,
+                    'nama'          => $orangTua->nama,
+                    'alamat'        => $orangTua->alamat,
+                    'tanggal_lahir' => $orangTua->tanggal_lahir,
+                    'status_hidup'  => $orangTua->status_hidup,
+                    'pekerjaan'     => $orangTua->pekerjaan,
+                    'status_hub'    => $orangTua->status_hub,
+                ],
+            ]);
+        }
+
+        if ($type === 'mertua') {
+            $mertua = Mertua::findOrFail($id);
+            abort_if($mertua->pegawai_id !== $pegawai->id, 403);
+
+            $validated = $request->validate([
+                'nik'           => 'nullable|digits:16',
+                'nama'          => 'required|string|max:255',
+                'tanggal_lahir' => 'nullable|date',
+                'status_hidup'  => 'nullable|in:Hidup,Meninggal',
+                'pekerjaan'     => 'nullable|string|max:100',
+            ]);
+
+            $mertua->update([
+                'nik'           => $validated['nik'] ?? null,
+                'nama'          => $validated['nama'],
+                'tanggal_lahir' => $validated['tanggal_lahir'] ?? null,
+                'status_hidup'  => $validated['status_hidup'] ?? null,
+                'pekerjaan'     => $validated['pekerjaan'] ?? null,
+            ]);
+
+            $this->syncKeluargaJsonFromTables($pegawai);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Data mertua berhasil diperbarui.',
+                'data' => [
+                    'id'            => $mertua->id,
+                    'nik'           => $mertua->nik,
+                    'nama'          => $mertua->nama,
+                    'tanggal_lahir' => $mertua->tanggal_lahir,
+                    'status_hidup'  => $mertua->status_hidup,
+                    'pekerjaan'     => $mertua->pekerjaan,
+                    'status_hub'    => $mertua->status_hub,
+                ],
+            ]);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'Tipe data keluarga tidak valid.'], 422);
+    }
+
+    public function deleteKeluargaMember(string $type, $id)
+    {
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        abort_if($pegawai->is_locked_keluarga, 403, 'Data keluarga sudah terkunci.');
+
+        if ($type === 'pasangan') {
+            $pasangan = Pasangan::findOrFail($id);
+            abort_if($pasangan->pegawai_id !== $pegawai->id, 403);
+            $pasangan->delete();
+        } elseif ($type === 'orang-tua') {
+            $orangTua = OrangTua::findOrFail($id);
+            abort_if($orangTua->pegawai_id !== $pegawai->id, 403);
+            if ($orangTua->file && Storage::disk('public')->exists($orangTua->file)) {
+                Storage::disk('public')->delete($orangTua->file);
+            }
+            $orangTua->delete();
+        } elseif ($type === 'mertua') {
+            $mertua = Mertua::findOrFail($id);
+            abort_if($mertua->pegawai_id !== $pegawai->id, 403);
+            if ($mertua->file && Storage::disk('public')->exists($mertua->file)) {
+                Storage::disk('public')->delete($mertua->file);
+            }
+            $mertua->delete();
+        } else {
+            return response()->json(['status' => 'error', 'message' => 'Tipe data keluarga tidak valid.'], 422);
+        }
+
+        $this->syncKeluargaJsonFromTables($pegawai);
+
+        return response()->json(['status' => 'success', 'message' => 'Data berhasil dihapus.']);
+    }
+
+    // Hapus seluruh data sub-bagian keluarga (pasangan / orang_tua / mertua)
+    public function deleteKeluargaSection(Request $request, $subStep)
+    {
+        $pegawai = $this->resolveCurrentPegawaiOrFail();
+        $allowed = ['pasangan', 'orang_tua', 'mertua'];
+        abort_if(!in_array($subStep, $allowed), 422, 'Sub-step tidak valid.');
+
+        $existing = $pegawai->data_keluarga ?? [];
+
+        // Delete related DB records
+        if ($subStep === 'pasangan') {
+            \App\Models\Pasangan::where('pegawai_id', $pegawai->id)->delete();
+            $existing['pasangan'] = [];
+        } elseif ($subStep === 'orang_tua') {
+            \App\Models\OrangTua::where('pegawai_id', $pegawai->id)->delete();
+            $existing['orang_tua'] = [];
+        } elseif ($subStep === 'mertua') {
+            \App\Models\Mertua::where('pegawai_id', $pegawai->id)->delete();
+            $existing['mertua'] = [];
+        }
+
+        $pegawai->data_keluarga = $existing;
+        $pegawai->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Data berhasil dihapus.']);
     }
 
     // Hapus file dokumen pendidikan saja
@@ -2334,6 +4060,158 @@ class PegawaiController extends Controller
             'status' => 'success',
             'message' => 'Password pegawai ' . $user->name . ' berhasil diubah.'
         ]);
+    }
+
+    /**
+     * Admin/Superadmin unlock DRH Legal
+     */
+    public function unlockDrhLegal(Request $request)
+    {
+        if (!Session::has('role') || !in_array(Session::get('role'), ['admin', 'superadmin'])) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 403);
+        }
+        $pegawaiId = $request->input('pegawai_id');
+        if (!$pegawaiId) {
+            return response()->json(['status' => 'error', 'message' => 'Pegawai ID tidak ditemukan'], 422);
+        }
+        $identitas = \App\Models\IdentitasLegal::where('pegawai_id', $pegawaiId)->first();
+        if (!$identitas) {
+            return response()->json(['status' => 'error', 'message' => 'Data identitas legal tidak ditemukan'], 404);
+        }
+        $identitas->is_locked_legal = false;
+        $identitas->save();
+
+        // Unlock semua section DRH pegawai sekaligus
+        $pegawai = \App\Models\Pegawai::find($pegawaiId);
+        if ($pegawai) {
+            $pegawai->is_locked_keluarga    = false;
+            $pegawai->is_locked_pendidikan  = false;
+            $pegawai->is_locked_diklat      = false;
+            $pegawai->is_locked_jabatan     = false;
+            $pegawai->is_locked_penghargaan = false;
+            $pegawai->is_locked_sertifikasi = false;
+            $pegawai->is_drh_locked         = false;
+            $pegawai->save();
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Semua data DRH berhasil di-unlock']);
+    }
+
+    /**
+     * Admin/Superadmin: Lock semua DRH pegawai (global lock)
+     */
+    public function lockAllDrh(Request $request)
+    {
+        if (!Session::has('role') || !in_array(Session::get('role'), ['admin', 'superadmin'])) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 403);
+        }
+        $pegawaiId = $request->input('pegawai_id');
+        if (!$pegawaiId) {
+            return response()->json(['status' => 'error', 'message' => 'Pegawai ID tidak ditemukan'], 422);
+        }
+        $pegawai = \App\Models\Pegawai::find($pegawaiId);
+        if (!$pegawai) {
+            return response()->json(['status' => 'error', 'message' => 'Pegawai tidak ditemukan'], 404);
+        }
+        $pegawai->is_locked_keluarga    = true;
+        $pegawai->is_locked_pendidikan  = true;
+        $pegawai->is_locked_diklat      = true;
+        $pegawai->is_locked_jabatan     = true;
+        $pegawai->is_locked_penghargaan = true;
+        $pegawai->is_locked_sertifikasi = true;
+        $pegawai->is_drh_locked         = true;
+        $pegawai->save();
+
+        $identitas = \App\Models\IdentitasLegal::where('pegawai_id', $pegawaiId)->first();
+        if ($identitas) {
+            $identitas->is_locked_legal = true;
+            $identitas->save();
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Semua data DRH berhasil di-lock']);
+    }
+
+    /**
+     * Admin/Superadmin: Unlock section DRH pegawai (keluarga, pendidikan, diklat, jabatan, penghargaan, sertifikasi)
+     */
+    public function unlockDrhSection(Request $request)
+    {
+        if (!Session::has('role') || !in_array(Session::get('role'), ['admin', 'superadmin'])) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 403);
+        }
+
+        $pegawaiId = $request->input('pegawai_id');
+        $section = $request->input('section');
+
+        $allowed = ['keluarga', 'pendidikan', 'diklat', 'jabatan', 'penghargaan', 'sertifikasi', 'dokumen'];
+        if (!$pegawaiId || !in_array($section, $allowed)) {
+            return response()->json(['status' => 'error', 'message' => 'Parameter tidak valid'], 422);
+        }
+
+        if ($section === 'dokumen') {
+            $identitas = \App\Models\IdentitasLegal::where('pegawai_id', $pegawaiId)->first();
+            if (!$identitas) {
+                return response()->json(['status' => 'error', 'message' => 'Data identitas legal tidak ditemukan'], 404);
+            }
+            $identitas->is_locked_legal = false;
+            $identitas->save();
+        } else {
+            $pegawai = \App\Models\Pegawai::find($pegawaiId);
+            if (!$pegawai) {
+                return response()->json(['status' => 'error', 'message' => 'Pegawai tidak ditemukan'], 404);
+            }
+            $column = 'is_locked_' . $section;
+            $pegawai->$column = false;
+            $pegawai->save();
+        }
+
+        // Reset global DRH lock whenever any section is unlocked by admin
+        $pegawaiModel = \App\Models\Pegawai::find($pegawaiId);
+        if ($pegawaiModel && $pegawaiModel->is_drh_locked) {
+            $pegawaiModel->is_drh_locked = false;
+            $pegawaiModel->save();
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Data ' . $section . ' berhasil di-unlock']);
+    }
+
+    /**
+     * Admin/Superadmin: Lock section DRH pegawai (keluarga, pendidikan, diklat, jabatan, penghargaan, sertifikasi)
+     */
+    public function lockDrhSection(Request $request)
+    {
+        if (!Session::has('role') || !in_array(Session::get('role'), ['admin', 'superadmin'])) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 403);
+        }
+
+        $pegawaiId = $request->input('pegawai_id');
+        $section = $request->input('section');
+
+        $allowed = ['keluarga', 'pendidikan', 'diklat', 'jabatan', 'penghargaan', 'sertifikasi', 'dokumen'];
+        if (!$pegawaiId || !in_array($section, $allowed)) {
+            return response()->json(['status' => 'error', 'message' => 'Parameter tidak valid'], 422);
+        }
+
+        if ($section === 'dokumen') {
+            $identitas = \App\Models\IdentitasLegal::where('pegawai_id', $pegawaiId)->first();
+            if (!$identitas) {
+                return response()->json(['status' => 'error', 'message' => 'Data identitas legal tidak ditemukan'], 404);
+            }
+            $identitas->is_locked_legal = true;
+            $identitas->save();
+            return response()->json(['status' => 'success', 'message' => 'Data legal berhasil di-lock']);
+        }
+
+        $pegawai = \App\Models\Pegawai::find($pegawaiId);
+        if (!$pegawai) {
+            return response()->json(['status' => 'error', 'message' => 'Pegawai tidak ditemukan'], 404);
+        }
+
+        $column = 'is_locked_' . $section;
+        $pegawai->$column = true;
+        $pegawai->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Data ' . $section . ' berhasil di-lock']);
     }
 }
 

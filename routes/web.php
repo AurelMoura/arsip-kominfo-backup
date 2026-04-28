@@ -72,12 +72,33 @@ Route::delete('/profile/drh/file/{type}/delete', [PegawaiController::class, 'del
 Route::delete('/profile/drh/dokumen/{section}/{id}/delete-file', [PegawaiController::class, 'deleteDrhDocumentFile']);
 Route::delete('/profile/drh/pendidikan/{id}/delete-file', [PegawaiController::class, 'deletePendidikanFile']);
 
-// --- API Hapus Riwayat DRH ---
+// --- API Hapus & Edit Riwayat DRH ---
 Route::delete('/profile/drh/pendidikan/{id}', [PegawaiController::class, 'deleteRiwayatPendidikan']);
+Route::put('/profile/drh/pendidikan/{id}', [PegawaiController::class, 'updateRiwayatPendidikan']);
+Route::post('/profile/drh/pendidikan/{id}/update', [PegawaiController::class, 'updateRiwayatPendidikan']);
 Route::delete('/profile/drh/diklat/{id}', [PegawaiController::class, 'deleteRiwayatDiklat']);
+Route::put('/profile/drh/diklat/{id}', [PegawaiController::class, 'updateRiwayatDiklat']);
+// routes/web.php — tambahkan route ini
+Route::post('/profile/drh/diklat/{id}/update', [PegawaiController::class, 'updateRiwayatDiklat']);
 Route::delete('/profile/drh/jabatan/{id}', [PegawaiController::class, 'deleteRiwayatJabatan']);
+Route::put('/profile/drh/jabatan/{id}', [PegawaiController::class, 'updateRiwayatJabatan']);
+Route::post('/profile/drh/jabatan/{id}/update', [PegawaiController::class, 'updateRiwayatJabatan']);
 Route::delete('/profile/drh/penghargaan/{id}', [PegawaiController::class, 'deleteRiwayatPenghargaan']);
+Route::put('/profile/drh/penghargaan/{id}', [PegawaiController::class, 'updateRiwayatPenghargaan']);
+// routes/web.php
+Route::post('/profile/drh/penghargaan/{id}/update', [PegawaiController::class, 'updateRiwayatPenghargaan']);
 Route::delete('/profile/drh/sertifikasi/{id}', [PegawaiController::class, 'deleteRiwayatSertifikasi']);
+Route::put('/profile/drh/sertifikasi/{id}', [PegawaiController::class, 'updateRiwayatSertifikasi']);
+Route::post('/profile/drh/sertifikasi/{id}/update', [PegawaiController::class, 'updateRiwayatSertifikasi']);
+
+Route::delete('/profile/drh/anak/{id}', [PegawaiController::class, 'deleteAnak']);
+Route::put('/profile/drh/anak/{id}', [PegawaiController::class, 'updateAnak']);
+Route::delete('/profile/drh/saudara/{id}', [PegawaiController::class, 'deleteSaudara']);
+Route::put('/profile/drh/saudara/{id}', [PegawaiController::class, 'updateSaudara']);
+Route::post('/profile/drh/keluarga/{type}', [PegawaiController::class, 'storeKeluargaMember']);
+Route::put('/profile/drh/keluarga/{type}/{id}', [PegawaiController::class, 'updateKeluargaMember']);
+Route::delete('/profile/drh/keluarga/{type}/{id}', [PegawaiController::class, 'deleteKeluargaMember']);
+Route::delete('/profile/drh/keluarga/{subStep}', [PegawaiController::class, 'deleteKeluargaSection']);
 
 // Arsip Dokumen Pegawai
 Route::get('/pegawai/riwayat-hidup', [PegawaiController::class, 'riwayatHidup']);
@@ -95,7 +116,9 @@ Route::post('/admin/validasi-dokumen/{id}/reject', [PegawaiController::class, 'r
 
 // Admin Pegawai DRH
 Route::get('/admin/pegawai/{id}/drh', [PegawaiController::class, 'adminViewPegawaiDrh']);
+Route::get('/admin/pegawai/by-pegawai/{pegawaiId}/drh', [PegawaiController::class, 'adminViewPegawaiDrhByPegawaiId']);
 Route::get('/admin/pegawai/{id}/drh/print', [PegawaiController::class, 'adminPrintPegawaiDrh']);
+Route::get('/superadmin/pegawai/{id}/drh/print', [PegawaiController::class, 'adminPrintPegawaiDrh']);
 Route::get('/admin/pegawai/{id}/arsip', [PegawaiController::class, 'adminKelolaArsipPegawai']);
 Route::get('/admin/pegawai/arsip/dokumen/{id}/view', [PegawaiController::class, 'adminViewArsipDocument']);
 Route::get('/admin/pegawai/arsip/dokumen/{id}/download', [PegawaiController::class, 'adminDownloadArsipDocument']);
@@ -109,6 +132,12 @@ Route::get('/pengajuan-berkas', [PegawaiController::class, 'pengajuanBerkas']);
 // User Activity Logs
 Route::get('/admin/user-activity', [\App\Http\Controllers\UserActivityController::class, 'adminActivityLogs'])->name('admin.user-activity');
 Route::get('/superadmin/user-activity', [\App\Http\Controllers\UserActivityController::class, 'superadminActivityLogs'])->name('superadmin.user-activity');
+
+// User Activity AJAX (Server-Side DataTables)
+Route::get('/admin/user-activity/data', [\App\Http\Controllers\UserActivityController::class, 'adminActivityData'])->name('admin.user-activity.data');
+Route::get('/admin/user-activity/stats', [\App\Http\Controllers\UserActivityController::class, 'adminActivityStats'])->name('admin.user-activity.stats');
+Route::get('/superadmin/user-activity/data', [\App\Http\Controllers\UserActivityController::class, 'superadminActivityData'])->name('superadmin.user-activity.data');
+Route::get('/superadmin/user-activity/stats', [\App\Http\Controllers\UserActivityController::class, 'superadminActivityStats'])->name('superadmin.user-activity.stats');
 
 // Test Telegram (debug route - hapus setelah testing)
 Route::get('/test-telegram', function () {
@@ -127,11 +156,13 @@ Route::get('/test-telegram', function () {
 // Master Data Management
 Route::prefix('admin/master')->group(function () {
     Route::get('/agama', [\App\Http\Controllers\MasterAgamaController::class, 'index']);
+    Route::get('/agama/{id}/asn', [\App\Http\Controllers\MasterAgamaController::class, 'showAsn']);
     Route::post('/agama', [\App\Http\Controllers\MasterAgamaController::class, 'store']);
     Route::put('/agama/{id}', [\App\Http\Controllers\MasterAgamaController::class, 'update']);
     Route::delete('/agama/{id}', [\App\Http\Controllers\MasterAgamaController::class, 'destroy']);
 
     Route::get('/pendidikan', [\App\Http\Controllers\MasterPendidikanController::class, 'index']);
+    Route::get('/pendidikan/{id}/asn', [\App\Http\Controllers\MasterPendidikanController::class, 'showAsn']);
     Route::post('/pendidikan', [\App\Http\Controllers\MasterPendidikanController::class, 'store']);
     Route::put('/pendidikan/{id}', [\App\Http\Controllers\MasterPendidikanController::class, 'update']);
     Route::delete('/pendidikan/{id}', [\App\Http\Controllers\MasterPendidikanController::class, 'destroy']);
@@ -142,11 +173,13 @@ Route::prefix('admin/master')->group(function () {
     Route::delete('/arsip/{id}', [\App\Http\Controllers\MasterArsipController::class, 'destroy']);
 
     Route::get('/jabatan', [\App\Http\Controllers\MasterJabatanController::class, 'index']);
+    Route::get('/jabatan/{id}/asn', [\App\Http\Controllers\MasterJabatanController::class, 'showAsn']);
     Route::post('/jabatan', [\App\Http\Controllers\MasterJabatanController::class, 'store']);
     Route::put('/jabatan/{id}', [\App\Http\Controllers\MasterJabatanController::class, 'update']);
     Route::delete('/jabatan/{id}', [\App\Http\Controllers\MasterJabatanController::class, 'destroy']);
 
     Route::get('/pangkat', [\App\Http\Controllers\MasterPangkatController::class, 'index']);
+    Route::get('/pangkat/{id}/asn', [\App\Http\Controllers\MasterPangkatController::class, 'showAsn']);
     Route::post('/pangkat', [\App\Http\Controllers\MasterPangkatController::class, 'store']);
     Route::put('/pangkat/{id}', [\App\Http\Controllers\MasterPangkatController::class, 'update']);
     Route::delete('/pangkat/{id}', [\App\Http\Controllers\MasterPangkatController::class, 'destroy']);
@@ -168,6 +201,7 @@ Route::post('/master/unitkerja', [MasterUnitKerjaController::class, 'store']);
 Route::put('/master/unitkerja/{id}', [MasterUnitKerjaController::class, 'update']);
 Route::delete('/master/unitkerja/{id}', [MasterUnitKerjaController::class, 'destroy']);
 Route::get('/master/unitkerja/{id}/asn', [MasterUnitKerjaController::class, 'asnList']);
+Route::get('/master/unitkerja/{id}/asn-detail', [MasterUnitKerjaController::class, 'showAsnPage']);
 
 // Hapus file dokumen pendidikan saja
 Route::delete('/pegawai/pendidikan/{id}/dokumen', [\App\Http\Controllers\PegawaiController::class, 'deletePendidikanFile'])->name('pegawai.pendidikan.deleteFile');
@@ -186,3 +220,16 @@ Route::delete('/pegawai/sertifikasi/{id}/dokumen', [\App\Http\Controllers\Pegawa
 
 // Hapus file dokumen unit kerja saja
 Route::delete('/pegawai/unit-kerja/{id}/dokumen', [\App\Http\Controllers\PegawaiController::class, 'deleteUnitKerjaFile'])->name('pegawai.unit-kerja.deleteFile');
+
+// Unlock DRH Legal (admin/superadmin only)
+Route::post('/profile/drh/identitas/unlock', [PegawaiController::class, 'unlockDrhLegal'])->name('drh.legal.unlock');
+Route::post('/admin/drh/unlock-legal', [PegawaiController::class, 'unlockDrhLegal'])->name('admin.drh.legal.unlock');
+
+// Lock/Unlock semua DRH sekaligus (admin/superadmin only)
+Route::post('/admin/drh/lock-all', [PegawaiController::class, 'lockAllDrh'])->name('admin.drh.lock.all');
+
+// Unlock/Lock DRH Section (admin/superadmin only) - keluarga, pendidikan, diklat, jabatan, penghargaan, sertifikasi
+Route::post('/admin/drh/unlock-section', [PegawaiController::class, 'unlockDrhSection'])->name('admin.drh.section.unlock');
+Route::post('/admin/drh/lock-section', [PegawaiController::class, 'lockDrhSection'])->name('admin.drh.section.lock');
+
+Route::post('/admin/pegawai/{id}/drh/save', [PegawaiController::class, 'storeDrhAdmin']);

@@ -15,40 +15,57 @@
             --sidebar-width: 260px;
         }
 
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
+            padding: 0;
             font-family: 'Inter', sans-serif;
             background: var(--bg-light);
             color: #2d3748;
+            overflow-x: hidden;
         }
 
         .app-shell {
             display: flex;
+            flex-direction: row;
             min-height: 100vh;
+            width: 100%;
+            max-width: 100%;
+            position: relative;
+            overflow-x: hidden;
         }
 
-        .app-sidebar {
+        .app-sidebar,
+        .sidebar.app-sidebar {
             width: var(--sidebar-width);
             min-width: var(--sidebar-width);
             max-width: var(--sidebar-width);
             height: 100vh;
-            position: fixed;
-            top: 0;
-            left: 0;
             background: var(--sidebar-color);
             color: #fff;
             z-index: 1000;
             box-shadow: 10px 0 30px rgba(0, 0, 0, 0.05);
             overflow-y: auto;
+            flex-shrink: 0;
+            position: relative;
         }
 
         .app-content {
-            margin-left: var(--sidebar-width);
-            width: calc(100% - var(--sidebar-width));
+            flex: 1;
+            width: 1px;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
         .app-main {
             padding: 40px;
+            width: 100%;
+            overflow-x: hidden;
+            flex: 1;
         }
 
         /* Normalize legacy page wrappers after moving to global layout */
@@ -80,21 +97,16 @@
             box-shadow: 0 4px 15px rgba(58, 134, 255, 0.3);
         }
 
-        @media (max-width: 991px) {
-            :root {
-                --sidebar-width: 80px;
-            }
-
-            .gs-brand-text,
-            .gs-profile-text,
-            .gs-nav-text,
-            .gs-profile-action,
-            .gs-role {
-                display: none !important;
+        @media (max-width: 991.98px) {
+            /* Sidebar is handled by components/sidebar.blade.php (fixed+transform) */
+            .app-content {
+                margin-left: 0 !important;
+                width: 100% !important;
             }
 
             .app-main {
-                padding: 25px;
+                padding: 16px !important;
+                padding-top: calc(56px + 16px) !important;
             }
 
             .app-main .main-content {
@@ -102,6 +114,47 @@
                 padding: 0 !important;
                 width: 100% !important;
             }
+        }
+
+        /* ===== GLOBAL RESPONSIVE HELPERS ===== */
+
+        /* Tables on mobile */
+        @media (max-width: 767.98px) {
+            .app-main {
+                padding: 12px !important;
+                padding-top: calc(56px + 12px) !important;
+            }
+
+            /* Reduce heavy card paddings */
+            .card-body { padding: 1rem !important; }
+            .p-4 { padding: 1rem !important; }
+            .p-5 { padding: 1.25rem !important; }
+            .p-lg-5 { padding: 1rem !important; }
+
+            /* Page headings */
+            h1 { font-size: 1.4rem !important; }
+            h2 { font-size: 1.2rem !important; }
+            h3 { font-size: 1.1rem !important; }
+
+            /* Header rows that should stack */
+            .d-flex.justify-content-between:not(.no-stack) {
+                flex-wrap: wrap !important;
+                gap: 10px !important;
+            }
+
+            /* Stat cards row */
+            .row.g-4 > .col-md-3,
+            .row.g-4 > .col-md-4,
+            .row.g-3 > .col-md-3,
+            .row.g-3 > .col-md-4 {
+                margin-bottom: 8px;
+            }
+        }
+
+        /* Ensure horizontal scroll for wide tables globally */
+        .table-responsive-always {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
         }
     </style>
     @stack('styles')

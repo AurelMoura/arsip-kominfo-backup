@@ -9,14 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->timestamp('last_password_change')->nullable()->after('password');
+            if (!Schema::hasColumn('users', 'last_password_change')) {
+                $table->timestamp('last_password_change')->nullable()->after('password');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('last_password_change');
+            if (Schema::hasColumn('users', 'last_password_change')) {
+                $table->dropColumn('last_password_change');
+            }
         });
     }
 };

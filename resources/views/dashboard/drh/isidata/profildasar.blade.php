@@ -45,7 +45,7 @@
             </div>
             <div class="col-md-12">
                 <label class="form-label">Nomor Induk Kependudukan (NIK) <span class="text-danger">*</span></label>
-                <input type="text" class="form-control py-2 shadow-sm" name="nik" placeholder="Masukan 16 digit NIK sesuai KTP" value="{{ old('nik', $drhData?->no_nik ?? '') }}" style="border-radius: 12px;">
+                <input type="text" class="form-control py-2 shadow-sm" name="nik" placeholder="Masukan 16 digit NIK sesuai KTP" value="{{ old('nik', $drhData?->no_nik ?? '') }}" minlength="16" maxlength="16" inputmode="numeric" pattern="[0-9]{16}" style="border-radius: 12px;">
             </div>
             <div class="col-12">
                 <label class="form-label">Alamat Email <span class="text-danger">*</span></label>
@@ -58,6 +58,10 @@
             <div class="col-12">
                 <label class="form-label">Alamat Lengkap Domisili <span class="text-danger">*</span></label>
                 <textarea class="form-control shadow-sm" name="alamat_domisili" rows="3" placeholder="Nama jalan, nomor rumah, RT/RW, dsb" style="border-radius: 12px;">{{ old('alamat_domisili', $drhData?->alamat ?? '') }}</textarea>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Alamat Sesuai KTP <span class="text-danger">*</span></label>
+                <textarea class="form-control shadow-sm" name="alamat_sesuai_ktp" rows="3" placeholder="Alamat lengkap sesuai KTP" style="border-radius: 12px;">{{ old('alamat_sesuai_ktp', $drhData?->alamat_ktp ?? '') }}</textarea>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Tempat Lahir <span class="text-danger">*</span></label>
@@ -125,30 +129,26 @@
                     <option value="PPPK" {{ old('jenis_asn', $drhData?->status_pegawai ?? '') === 'PPPK' ? 'selected' : '' }}>PPPK</option>
                 </select>
             </div>
-            <div class="col-12">
-                <label class="form-label">Jabatan <span class="text-danger">*</span></label>
-                <div class="row g-3">
-                    <div class="col-md-4" id="jenisJabatanCol">
-                        <select class="form-select py-2 shadow-sm" id="jenisJabatan" style="border-radius: 12px;" onchange="onJenisChange(false)">
-                            <option value="">Pilih Jenis Jabatan</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4" id="eselonCol">
-                        <select class="form-select py-2 shadow-sm" id="eselonJabatan" style="border-radius: 12px;" onchange="onEselonChange(false)" disabled>
-                            <option value="">Pilih Eselon</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4" id="namaJabatanCol">
-                        <select class="form-select py-2 shadow-sm" id="namaJabatan" name="jabatan_id" style="border-radius: 12px;" disabled>
-                            <option value="">Pilih Nama Jabatan</option>
-                        </select>
-                    </div>
-                </div>
-                <input type="hidden" id="savedJabatanId" value="{{ old('jabatan_id', $drhData ? \App\Models\Jabatan::where('nama_jabatan', $drhData->nama_jabatan)->where('jenis_jabatan', $drhData->jenis_jabatan)->value('id') : '') }}">
+            <div class="col-md-6">
+                <label class="form-label">Jabatan</label>
+                <input type="text" id="profilDasarJenisJabatan" class="form-control py-2 shadow-sm bg-light" value="{{ $drhData?->jenis_jabatan ?? '-' }}" style="border-radius: 12px;" readonly disabled>
             </div>
             <div class="col-md-6">
-                <label class="form-label">TMT Jabatan <span class="text-danger">*</span></label>
-                <input type="date" class="form-control py-2 shadow-sm" name="tmt_jabatan" value="{{ old('tmt_jabatan', $drhData?->tmt_jabatan?->format('Y-m-d') ?? '') }}" style="border-radius: 12px;">
+                <label class="form-label">Eselon</label>
+                <input type="text" id="profilDasarEselonJabatan" class="form-control py-2 shadow-sm bg-light" value="{{ $drhData?->eselon_jabatan ?? '-' }}" style="border-radius: 12px;" readonly disabled>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Nama Jabatan</label>
+                <input type="text" id="profilDasarNamaJabatan" class="form-control py-2 shadow-sm bg-light" value="{{ $drhData?->nama_jabatan ?? '-' }}" style="border-radius: 12px;" readonly disabled>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">TMT Jabatan</label>
+                <input type="text" id="profilDasarTmtJabatan" class="form-control py-2 shadow-sm bg-light" value="{{ $drhData?->tmt_jabatan ? $drhData->tmt_jabatan->format('d-m-Y') : '-' }}" style="border-radius: 12px;" readonly disabled>
+            </div>
+            <div class="col-12">
+                <div class="alert alert-info border-0 rounded-4 mb-0" style="background: #eff6ff; color: #1e40af;">
+                    Data jabatan, eselon, nama jabatan, dan TMT jabatan diisi otomatis dari bagian E. Riwayat Jabatan.
+                </div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Golongan/Pangkat <span class="text-danger">*</span></label>
@@ -208,9 +208,6 @@
 </style>
 
 <script>
-    const savedJabatanId = document.getElementById('savedJabatanId').value;
-    const savedEselon = '{{ $drhData?->eselon_jabatan ?? '' }}';
-    const savedJenisJabatan = '{{ $drhData?->jenis_jabatan ?? '' }}';
     const savedGolongan = document.getElementById('savedGolongan') ? document.getElementById('savedGolongan').value : '';
     const pangkatsData = @json($pangkatList);
 
@@ -237,156 +234,7 @@
 
     function handleAsnChange(isRestore) {
         const jenisAsn = document.getElementById('jenisAsn').value;
-        const jenisCol = document.getElementById('jenisJabatanCol');
-        const eselonCol = document.getElementById('eselonCol');
-        const namaCol = document.getElementById('namaJabatanCol');
-        const namaSelect = document.getElementById('namaJabatan');
-        
         loadGolongan(jenisAsn, isRestore);
-
-        if (jenisAsn === 'PPPK') {
-            jenisCol.style.display = 'none';
-            eselonCol.style.display = 'none';
-            namaCol.className = 'col-md-12';
-            
-            // clear and disable before fetch
-            namaSelect.innerHTML = '<option value="">Memuat...</option>';
-            namaSelect.disabled = true;
-            
-            // Fetch all jabatans
-            fetch('/api/jabatan/nama?jenis_asn=PPPK')
-                .then(r => r.json())
-                .then(jabatans => {
-                    namaSelect.innerHTML = '<option value="">Pilih Nama Jabatan</option>';
-                    jabatans.forEach(j => {
-                        const opt = document.createElement('option');
-                        opt.value = j.id;
-                        opt.textContent = j.nama_jabatan;
-                        namaSelect.appendChild(opt);
-                    });
-                    namaSelect.disabled = false;
-
-                    if (isRestore && savedJabatanId) {
-                        namaSelect.value = savedJabatanId;
-                    }
-                });
-        } else {
-            jenisCol.style.display = 'block';
-            eselonCol.style.display = 'block';
-            namaCol.className = 'col-md-4';
-            
-            // Load jenis jabatan from database
-            const jenisSelect = document.getElementById('jenisJabatan');
-            jenisSelect.innerHTML = '<option value="">Memuat...</option>';
-            
-            fetch('/api/jabatan/jenis')
-                .then(r => r.json())
-                .then(jenisList => {
-                    jenisSelect.innerHTML = '<option value="">Pilih Jenis Jabatan</option>';
-                    jenisList.forEach(j => {
-                        const opt = document.createElement('option');
-                        opt.value = j;
-                        opt.textContent = j;
-                        jenisSelect.appendChild(opt);
-                    });
-
-                    if (isRestore && savedJenisJabatan) {
-                        jenisSelect.value = savedJenisJabatan;
-                    }
-
-                    if (jenisSelect.value) {
-                        onJenisChange(isRestore);
-                    } else if (!isRestore) {
-                        document.getElementById('eselonJabatan').value = '';
-                        namaSelect.innerHTML = '<option value="">Pilih Nama Jabatan</option>';
-                        namaSelect.disabled = true;
-                    }
-                });
-        }
-    }
-
-    function onJenisChange(isRestore) {
-        const jenis = document.getElementById('jenisJabatan').value;
-        const eselonSelect = document.getElementById('eselonJabatan');
-        const namaSelect = document.getElementById('namaJabatan');
-
-        // Reset eselon & nama
-        eselonSelect.innerHTML = '<option value="">Pilih Eselon</option>';
-        eselonSelect.disabled = true;
-        namaSelect.innerHTML = '<option value="">Pilih Nama Jabatan</option>';
-        namaSelect.disabled = true;
-
-        if (!jenis) return;
-
-        // Fetch eselon list for this jenis
-        fetch(`/api/jabatan/eselon/${encodeURIComponent(jenis)}`)
-            .then(r => r.json())
-            .then(eselons => {
-                if (eselons.length === 0) {
-                    // No eselon (JFU/JFT) — skip eselon, load nama directly
-                    eselonSelect.innerHTML = '<option value="" selected>— Tanpa Eselon —</option>';
-                    eselonSelect.disabled = true;
-                    loadNamaJabatan(jenis, null);
-                } else {
-                    eselons.forEach(e => {
-                        const opt = document.createElement('option');
-                        opt.value = e;
-                        opt.textContent = e;
-                        eselonSelect.appendChild(opt);
-                    });
-                    eselonSelect.disabled = false;
-
-                    // If restoring saved data, auto-select eselon
-                    if (isRestore && savedEselon) {
-                        eselonSelect.value = savedEselon;
-                        if (eselonSelect.value === savedEselon) {
-                            onEselonChange(true);
-                        }
-                    }
-                }
-            });
-    }
-
-    function onEselonChange(isRestore) {
-        const jenis = document.getElementById('jenisJabatan').value;
-        const eselon = document.getElementById('eselonJabatan').value;
-        const namaSelect = document.getElementById('namaJabatan');
-
-        namaSelect.innerHTML = '<option value="">Pilih Nama Jabatan</option>';
-        namaSelect.disabled = true;
-
-        if (!eselon) return;
-
-        loadNamaJabatan(jenis, eselon, isRestore);
-    }
-
-    function loadNamaJabatan(jenis, eselon, isRestore) {
-        const jenisAsn = document.getElementById('jenisAsn').value;
-        const namaSelect = document.getElementById('namaJabatan');
-        let url = `/api/jabatan/nama?jenis=${encodeURIComponent(jenis)}`;
-        if (eselon) {
-            url += `&eselon=${encodeURIComponent(eselon)}`;
-        }
-        if (jenisAsn) {
-            url += `&jenis_asn=${encodeURIComponent(jenisAsn)}`;
-        }
-
-        fetch(url)
-            .then(r => r.json())
-            .then(jabatans => {
-                jabatans.forEach(j => {
-                    const opt = document.createElement('option');
-                    opt.value = j.id;
-                    opt.textContent = j.nama_jabatan;
-                    namaSelect.appendChild(opt);
-                });
-                namaSelect.disabled = false;
-
-                // Restore saved jabatan_id
-                if (savedJabatanId) {
-                    namaSelect.value = savedJabatanId;
-                }
-            });
     }
 
     // Auto-trigger cascade on page load if data exists
@@ -396,25 +244,6 @@
             handleAsnChange(true);
         } else {
             loadGolongan('', true);
-            // Load jenis jabatan from API
-            const jenisSelect = document.getElementById('jenisJabatan');
-            fetch('/api/jabatan/jenis')
-                .then(r => r.json())
-                .then(jenisList => {
-                    jenisSelect.innerHTML = '<option value="">Pilih Jenis Jabatan</option>';
-                    jenisList.forEach(j => {
-                        const opt = document.createElement('option');
-                        opt.value = j;
-                        opt.textContent = j;
-                        jenisSelect.appendChild(opt);
-                    });
-                    if (savedJenisJabatan) {
-                        jenisSelect.value = savedJenisJabatan;
-                        if (jenisSelect.value) {
-                            onJenisChange(true);
-                        }
-                    }
-                });
         }
     });
 </script>

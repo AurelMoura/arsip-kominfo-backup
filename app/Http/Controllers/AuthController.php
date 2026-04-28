@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Session;
 use App\Models\User;
+use App\Models\Document;
 use App\Models\UserActivityLog;
 use App\Helpers\UserActivityHelper;
 
@@ -86,7 +87,9 @@ class AuthController extends Controller
 
         // Pintu Masuk 2: Jika role adalah PEGAWAI
         if ($role == 'pegawai') {
-            return view('dashboard.pegawai');
+            $userId = Session::get('user_id');
+            $menungguCount = Document::where('user_id', $userId)->where('status', 'Pending')->count();
+            return view('dashboard.pegawai', compact('menungguCount'));
         }
 
         // Pintu Masuk 3: Jika role adalah SUPERADMIN (dashboard sama dengan admin)

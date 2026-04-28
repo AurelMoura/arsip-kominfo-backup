@@ -174,6 +174,19 @@
             font-family: 'Courier New', Courier, monospace;
             font-weight: 600;
         }
+
+        @media (max-width: 991.98px) {
+            .main-content {
+                padding: 16px !important;
+                padding-top: calc(56px + 16px) !important;
+            }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            h2 { font-size: 1.3rem !important; }
+            .badge-nip { font-size: 11px !important; padding: 4px 8px !important; }
+        }
     </style>
 </head>
 <body>

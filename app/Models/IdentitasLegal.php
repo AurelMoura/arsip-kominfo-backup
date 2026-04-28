@@ -14,10 +14,12 @@ class IdentitasLegal extends Model
         'no_ktp',
         'no_npwp',
         'no_bpjs',
+        'no_kk',
         'dok_ktp',
         'dok_npwp',
         'dok_bpjs',
         'dok_kk',
+        'is_locked_legal',
     ];
 
     public function pegawai()

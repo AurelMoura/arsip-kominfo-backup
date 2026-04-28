@@ -189,16 +189,14 @@
                                 </td>
                                 <td class="text-center">
                                     @if($jabatan->pegawais_count > 0)
-                                        <button class="asn-badge asn-badge-filled"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#modalAsnJabatan{{ $jabatan->id }}"
+                                        <a href="{{ url('/admin/master/jabatan/'.$jabatan->id.'/asn') }}"
+                                            class="asn-badge asn-badge-filled"
                                             title="Lihat daftar ASN">
-                                            <i class="bi bi-people-fill" style="font-size:11px;"></i>
-                                            {{ $jabatan->pegawais_count }} ASN
-                                        </button>
+                                            {{ $jabatan->pegawais_count }}
+                                        </a>
                                     @else
                                         <span class="asn-badge asn-badge-empty">
-                                            <i class="bi bi-person-x" style="font-size:11px;"></i> 0 ASN
+                                            0
                                         </span>
                                     @endif
                                 </td>
@@ -264,11 +262,18 @@
                     <div id="pnsFields" style="display: none;" class="p-3 bg-light rounded-4 mb-3">
                         <div class="mb-3">
                             <label class="form-label small fw-bold text-muted">Jenis Jabatan</label>
-                            <input type="text" class="form-control" name="jenis_jabatan" placeholder="Struktural / JFT / JFU">
+                            <select class="form-select" name="jenis_jabatan" id="tambahJenisJabatan" onchange="updateTambahEselonOptions()">
+                                <option value="">Pilih Jenis Jabatan</option>
+                                <option value="STRUKTURAL">STRUKTURAL</option>
+                                <option value="JFT">JFT</option>
+                                <option value="JFU">JFU</option>
+                            </select>
                         </div>
                         <div class="mb-0">
                             <label class="form-label small fw-bold text-muted">Eselon</label>
-                            <input type="text" class="form-control" name="eselon" placeholder="II.a / III.b">
+                            <select class="form-select" name="eselon" id="tambahEselonSelect" disabled>
+                                <option value="">Pilih Eselon</option>
+                            </select>
                         </div>
                     </div>
                     <div class="mb-3">
@@ -285,7 +290,7 @@
     </div>
 </div>
 
-{{-- Modal Edit + Modal Detail ASN per Jabatan --}}
+{{-- Modal Edit Jabatan --}}
 @foreach($jabatans as $jabatan)
 
 {{-- Modal Edit Jabatan --}}
@@ -331,63 +336,44 @@
     </div>
 </div>
 
-{{-- Modal Detail ASN per Jabatan --}}
-<div class="modal fade" id="modalAsnJabatan{{ $jabatan->id }}" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-md">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-header modal-detail-header border-0 px-4 pt-4 pb-3">
-                <div>
-                    <h5 class="fw-bold mb-1">
-                        <i class="bi bi-briefcase-fill me-2"></i>ASN — {{ $jabatan->nama_jabatan }}
-                    </h5>
-                    <small class="opacity-75">
-                        {{ $jabatan->eselon ? 'Eselon '.$jabatan->eselon.' · ' : '' }}
-                        {{ $jabatan->pegawais_count }} pegawai
-                    </small>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body px-4 py-3" style="max-height: 420px; overflow-y: auto;">
-                @if($jabatan->pegawais->isEmpty())
-                    <div class="text-center py-4 text-muted">
-                        <i class="bi bi-person-x display-4 text-light"></i>
-                        <p class="mt-2 small">Belum ada ASN dengan jabatan ini.</p>
-                    </div>
-                @else
-                    @foreach($jabatan->pegawais as $pegawai)
-                    <div class="asn-list-item">
-                        <div class="asn-avatar">{{ strtoupper(substr($pegawai->nama_lengkap, 0, 2)) }}</div>
-                        <div class="flex-grow-1">
-                            <div class="fw-bold text-dark small">{{ $pegawai->nama_lengkap }}</div>
-                            <div class="text-muted" style="font-size:11px;">NIP: {{ $pegawai->id }}</div>
-                        </div>
-                        <div class="text-end">
-                            @if($pegawai->eselon_jabatan)
-                                <span class="badge bg-info bg-opacity-10 text-info rounded-pill px-2 small d-block mb-1">
-                                    Eselon {{ $pegawai->eselon_jabatan }}
-                                </span>
-                            @endif
-                            <span class="badge {{ $pegawai->status_pegawai === 'PNS' ? 'bg-primary' : 'bg-warning text-dark' }} rounded-pill px-2 small">
-                                {{ $pegawai->status_pegawai }}
-                            </span>
-                        </div>
-                    </div>
-                    @endforeach
-                @endif
-            </div>
-            <div class="modal-footer border-0 pb-3 px-4">
-                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Tutup</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 @endforeach
 
 <script>
+    function updateTambahEselonOptions() {
+        const jenisEl = document.getElementById('tambahJenisJabatan');
+        const eselonEl = document.getElementById('tambahEselonSelect');
+        if (!jenisEl || !eselonEl) return;
+
+        const jenis = jenisEl.value;
+        eselonEl.innerHTML = '<option value="">Tanpa Eselon</option>';
+
+        if (!jenis) {
+            eselonEl.disabled = true;
+            return;
+        }
+
+        ['I.a', 'I.b', 'II.a', 'II.b', 'III.a', 'III.b', 'IV.a', 'IV.b', 'V.a'].forEach((eselon) => {
+            const option = document.createElement('option');
+            option.value = eselon;
+            option.textContent = eselon;
+            eselonEl.appendChild(option);
+        });
+        eselonEl.disabled = false;
+    }
+
     function toggleJabatanFields() {
         const val = document.getElementById('jenisAsnSelect').value;
-        document.getElementById('pnsFields').style.display = (val === 'PNS' || val === 'Keduanya') ? 'block' : 'none';
+        const pnsFields = document.getElementById('pnsFields');
+        const showPnsFields = (val === 'PNS' || val === 'Keduanya');
+        pnsFields.style.display = showPnsFields ? 'block' : 'none';
+
+        if (!showPnsFields) {
+            document.getElementById('tambahJenisJabatan').value = '';
+            document.getElementById('tambahEselonSelect').innerHTML = '<option value="">Tanpa Eselon</option>';
+            document.getElementById('tambahEselonSelect').disabled = true;
+        } else {
+            updateTambahEselonOptions();
+        }
     }
 
     function toggleEditJabatanFields(id) {

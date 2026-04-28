@@ -191,16 +191,14 @@
                                 </td>
                                 <td class="text-center">
                                     @if($pangkat->pegawais_count > 0)
-                                        <button class="asn-badge asn-badge-filled"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#modalAsnPangkat{{ $pangkat->id }}"
+                                        <a href="{{ url('/admin/master/pangkat/'.$pangkat->id.'/asn') }}"
+                                            class="asn-badge asn-badge-filled"
                                             title="Lihat daftar ASN">
-                                            <i class="bi bi-people-fill" style="font-size:11px;"></i>
-                                            {{ $pangkat->pegawais_count }} ASN
-                                        </button>
+                                            {{ $pangkat->pegawais_count }}
+                                        </a>
                                     @else
                                         <span class="asn-badge asn-badge-empty">
-                                            <i class="bi bi-person-x" style="font-size:11px;"></i> 0 ASN
+                                            0
                                         </span>
                                     @endif
                                 </td>

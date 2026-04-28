@@ -16,8 +16,12 @@
     </div>
 
     <div id="identitasStatus" class="mb-3"></div>
-
-    <form id="identitasForm" action="{{ url('/profile/drh') }}" method="POST" enctype="multipart/form-data">
+    {{-- DEBUG: hapus setelah fix --}}
+    {{ dump($isAdmin, $user->id) }}
+    <form id="identitasForm" 
+    action="{{ $isAdmin ? url('/admin/pegawai/'.$user->id.'/drh/save') : url('/profile/drh') }}" 
+    method="POST" 
+    enctype="multipart/form-data">
         @csrf
         <input type="hidden" name="step" id="identitasStep" value="7">
         @include('dashboard.drh.legal')
@@ -45,16 +49,41 @@
             const data = await response.json();
 
             if (data.status === 'success') {
-                statusBox.innerHTML = '<div class="alert alert-success border-0 shadow-sm rounded-4 p-3"><i class="bi bi-check-circle-fill me-2"></i>' + (data.message || 'Data legal berhasil disimpan') + '</div>';
+                Swal.fire({
+                    icon: 'success',
+                    title: data.message || 'Data legal berhasil disimpan',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 2000
+                });
+                statusBox.innerHTML = '';
             } else {
                 let msg = data.message || 'Gagal menyimpan data identitas legal';
                 if (data.errors && typeof data.errors === 'object') {
-                    msg = Object.values(data.errors).flat().join('<br>');
+                    msg = Object.values(data.errors).flat().join('\n');
                 }
-                statusBox.innerHTML = '<div class="alert alert-danger border-0 shadow-sm rounded-4 p-3"><i class="bi bi-exclamation-triangle-fill me-2"></i>' + msg + '</div>';
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal',
+                    text: msg,
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3000
+                });
+                statusBox.innerHTML = '';
             }
         } catch (e) {
-            statusBox.innerHTML = '<div class="alert alert-danger border-0 shadow-sm rounded-4 p-3"><i class="bi bi-exclamation-triangle-fill me-2"></i>Terjadi kesalahan saat menyimpan data</div>';
+            Swal.fire({
+                icon: 'error',
+                title: 'Terjadi kesalahan saat menyimpan data',
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000
+            });
+            statusBox.innerHTML = '';
         }
     }
 

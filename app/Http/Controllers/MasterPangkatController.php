@@ -25,6 +25,27 @@ class MasterPangkatController extends Controller
         return view('dashboard.master.pangkat', compact('pangkats'));
     }
 
+    public function showAsn($id)
+    {
+        $pangkat = Pangkat::withCount('pegawais')
+            ->with(['pegawais' => function ($q) {
+                $q->with('user:id,pegawai_id')
+                    ->orderBy('nama_lengkap')
+                    ->select(['id', 'nama_lengkap', 'golongan_pangkat', 'nama_pangkat', 'status_pegawai', 'foto_profil']);
+            }])
+            ->findOrFail($id);
+
+        return view('dashboard.master.asn_detail', [
+            'backUrl' => url('/admin/master/pangkat'),
+            'heading' => 'Detail ASN Pangkat',
+            'subHeading' => 'Daftar ASN dengan pangkat/golongan ' . $pangkat->golongan,
+            'referenceName' => trim(($pangkat->golongan ?? '') . ' ' . ($pangkat->nama ?? '')),
+            'referenceType' => 'Pangkat',
+            'asnCount' => $pangkat->pegawais_count,
+            'asns' => $pangkat->pegawais,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $request->validate([

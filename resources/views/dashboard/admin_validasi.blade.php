@@ -9,6 +9,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
+        /* Toast Container */
+        #toastContainer {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 9999;
+            width: min(300px, calc(100vw - 32px));
+        }
+
         :root { 
             --sidebar-color: #1e3a5f; 
             --primary-blue: #4361ee; 
@@ -157,9 +166,25 @@
             padding: 12px;
             margin-bottom: 30px;
         }
+
+        @media (max-width: 991.98px) {
+            .main-content {
+                padding: 16px !important;
+                padding-top: calc(56px + 16px) !important;
+            }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+            .modal-dialog.modal-lg { max-width: calc(100vw - 32px) !important; margin: 16px auto !important; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            h2 { font-size: 1.3rem !important; }
+        }
     </style>
 </head>
 <body>
+
+<!-- Toast Container -->
+<div id="toastContainer"></div>
 
 @include('components.sidebar')
 
@@ -347,6 +372,72 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    // Toast Notification System
+    function showToast(message, type = 'success', duration = 4000) {
+        const toastContainer = document.getElementById('toastContainer');
+        
+        const toastEl = document.createElement('div');
+        toastEl.className = `toast show mb-3`;
+        toastEl.setAttribute('role', 'alert');
+        toastEl.setAttribute('aria-live', 'assertive');
+        toastEl.setAttribute('aria-atomic', 'true');
+        
+        let bgColor = '';
+        let icon = '';
+        let textColor = 'text-dark';
+        
+        switch(type.toLowerCase()) {
+            case 'success':
+                bgColor = 'bg-success';
+                icon = '<i class="bi bi-check-circle-fill me-2 text-white" style="font-size: 18px;"></i>';
+                textColor = 'text-white';
+                break;
+            case 'error':
+            case 'danger':
+                bgColor = 'bg-danger';
+                icon = '<i class="bi bi-exclamation-circle-fill me-2 text-white" style="font-size: 18px;"></i>';
+                textColor = 'text-white';
+                break;
+            case 'warning':
+                bgColor = 'bg-warning';
+                icon = '<i class="bi bi-exclamation-triangle-fill me-2" style="font-size: 18px; color: #000;"></i>';
+                textColor = 'text-dark';
+                break;
+            case 'info':
+                bgColor = 'bg-info';
+                icon = '<i class="bi bi-info-circle-fill me-2 text-white" style="font-size: 18px;"></i>';
+                textColor = 'text-white';
+                break;
+        }
+        
+        toastEl.innerHTML = `
+            <div class="${bgColor} ${textColor} border-0 shadow-lg rounded-3" style="padding: 14px 18px;">
+                <div class="d-flex align-items-center">
+                    ${icon}
+                    <span class="fw-medium">${message}</span>
+                    <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="toast" aria-label="Close" style="opacity: 0.8;"></button>
+                </div>
+            </div>`;
+        
+        toastContainer.appendChild(toastEl);
+        
+        if (duration > 0) {
+            setTimeout(() => {
+                toastEl.remove();
+            }, duration);
+        }
+    }
+
+    // Show toast from session flash message
+    document.addEventListener('DOMContentLoaded', function() {
+        @if(session('success'))
+            showToast('{{ session('success') }}', 'success');
+        @endif
+        @if(session('error'))
+            showToast('{{ session('error') }}', 'error');
+        @endif
+    });
+
     // FUNGSI JAVASCRIPT TETAP SAMA SEPERTI ASLINYA (TIDAK BERUBAH)
     let currentPreviewId = null;
 

@@ -107,6 +107,19 @@
             border: 2px dashed #cbd5e1;
             transition: all 0.3s;
         }
+
+        @media (max-width: 991.98px) {
+            .main-content {
+                padding: 16px !important;
+                padding-top: calc(56px + 16px) !important;
+            }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+            .modal-dialog.modal-lg { max-width: calc(100vw - 32px) !important; margin: 16px auto !important; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            h2 { font-size: 1.3rem !important; }
+        }
     </style>
 </head>
 <body>
@@ -297,6 +310,7 @@
                             <button type="button" class="btn btn-outline-danger px-4" onclick="toggleReviewRejectArea(true)">Tolak Berkas</button>
                             <form id="reviewApproveForm" method="POST" class="m-0">
                                 @csrf
+                                <input type="hidden" name="return_to" value="{{ url('/admin/pegawai/'.$user->id.'/arsip') }}">
                                 <button type="button" class="btn btn-success px-4" onclick="submitReviewApprove()">Setujui & Arsipkan</button>
                             </form>
                         </div>
@@ -395,8 +409,14 @@
         reasonField.name = 'reason';
         reasonField.value = reason;
 
+        const returnToInput = document.createElement('input');
+        returnToInput.type = 'hidden';
+        returnToInput.name = 'return_to';
+        returnToInput.value = '{{ url('/admin/pegawai/'.$user->id.'/arsip') }}';
+
         rejectForm.appendChild(tokenInput);
         rejectForm.appendChild(reasonField);
+        rejectForm.appendChild(returnToInput);
         document.body.appendChild(rejectForm);
         rejectForm.submit();
     }

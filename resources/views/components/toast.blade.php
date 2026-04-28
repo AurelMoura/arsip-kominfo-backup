@@ -1,5 +1,5 @@
 <!-- Toast Container -->
-<div class="position-fixed" id="toastContainer" style="top: 20px; right: 20px; z-index: 9999; min-width: 350px;">
+<div class="position-fixed" id="toastContainer" style="top: 16px; right: 16px; z-index: 9999; width: min(300px, calc(100vw - 32px));">
 </div>
 
 <script>
@@ -76,6 +76,8 @@ window.showToast = showToast;
     border-radius: 12px;
     animation: slideIn 0.3s ease-out;
     backdrop-filter: blur(10px);
+    width: 100%;
+    max-width: 300px;
 }
 
 @keyframes slideIn {

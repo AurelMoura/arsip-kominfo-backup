@@ -214,8 +214,8 @@
                                 @endif
                             </td>
                             <td class="text-center">
-                                <a href="#" class="asn-count-badge" data-bs-toggle="modal" data-bs-target="#modalDetailASN{{ $pendidikan->id }}">
-                                    {{ $pendidikan->pegawais_count }} ASN
+                                <a href="{{ url('/admin/master/pendidikan/'.$pendidikan->id.'/asn') }}" class="asn-count-badge">
+                                    {{ $pendidikan->pegawais_count }}
                                 </a>
                             </td>
                             <td class="text-center pe-4">

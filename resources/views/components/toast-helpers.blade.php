@@ -1,5 +1,99 @@
 <!-- Toast Helper Functions -->
 <script>
+function mapNotificationType(type) {
+    const normalized = (type || 'info').toString().toLowerCase();
+    if (normalized === 'success') return 'success';
+    if (normalized === 'error') return 'error';
+    if (normalized === 'warning') return 'warning';
+    return 'info';
+}
+
+function extractNotificationMessage(payload) {
+    if (!payload) return '';
+
+    if (typeof payload === 'string') {
+        return payload;
+    }
+
+    if (typeof payload === 'object') {
+        if (typeof payload.text === 'string' && payload.text.trim() !== '') {
+            return payload.text;
+        }
+        if (typeof payload.title === 'string' && payload.title.trim() !== '') {
+            return payload.title;
+        }
+        if (typeof payload.html === 'string' && payload.html.trim() !== '') {
+            const tempEl = document.createElement('div');
+            tempEl.innerHTML = payload.html;
+            return (tempEl.textContent || tempEl.innerText || '').trim();
+        }
+    }
+
+    return '';
+}
+
+function isSwalConfirmLike(config) {
+    if (!config || typeof config !== 'object') {
+        return false;
+    }
+
+    return Boolean(
+        config.showCancelButton ||
+        config.showDenyButton ||
+        config.input ||
+        config.preConfirm ||
+        config.preDeny ||
+        config.allowOutsideClick === false
+    );
+}
+
+function initGlobalToastNotificationBridge() {
+    if (window.__toastNotificationBridgeInitialized) {
+        return;
+    }
+
+    window.__toastNotificationBridgeInitialized = true;
+
+    // Semua alert lama diarahkan ke toast agar konsisten.
+    window.alert = function(message) {
+        showToast(message || 'Terjadi notifikasi.', 'info');
+    };
+
+    // Konversi Swal notifikasi sederhana menjadi toast, konfirmasi tetap memakai Swal.
+    if (window.Swal && typeof window.Swal.fire === 'function' && !window.Swal.__toastBridged) {
+        const originalSwalFire = window.Swal.fire.bind(window.Swal);
+
+        window.Swal.fire = function(...args) {
+            try {
+                if (args.length === 3 && typeof args[0] === 'string' && typeof args[2] === 'string') {
+                    const message = args[1] || args[0] || 'Notifikasi';
+                    showToast(message, mapNotificationType(args[2]));
+                    return Promise.resolve({ isConfirmed: true, isDismissed: true });
+                }
+
+                if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+                    const config = args[0];
+                    const icon = mapNotificationType(config.icon);
+                    const message = extractNotificationMessage(config);
+
+                    if (!isSwalConfirmLike(config) && message) {
+                        showToast(message, icon);
+                        return Promise.resolve({ isConfirmed: true, isDismissed: true });
+                    }
+                }
+            } catch (e) {
+                // Jika bridge gagal membaca config, fallback ke Swal asli.
+            }
+
+            return originalSwalFire(...args);
+        };
+
+        window.Swal.__toastBridged = true;
+    }
+}
+
+initGlobalToastNotificationBridge();
+
 // Toast confirm function - shows confirmation dialog and then shows toast on success
 function confirmAndToast(message, successMsg = null, actionFn = null, errorCallback = null) {
     return new Promise((resolve) => {

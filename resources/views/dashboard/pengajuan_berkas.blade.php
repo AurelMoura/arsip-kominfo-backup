@@ -128,13 +128,14 @@
         .important-note-text { font-size: 14px; color: #1e3a8a; opacity: 0.9; }
 
         /* Responsive Mobile */
-        @media (max-width: 991px) {
-            .sidebar { width: 80px; }
-            .sidebar .text-white, .sidebar small, .sidebar .ms-auto, .sidebar .nav-link span { display: none; }
-            .sidebar .nav-link { text-align: center; margin: 5px 10px; }
-            .sidebar .nav-link i { margin: 0 !important; font-size: 20px; }
-            .main-content { margin-left: 80px; padding: 20px; }
-            .content-card { padding: 25px; }
+        @media (max-width: 991.98px) {
+            .main-content { padding: 16px !important; padding-top: calc(56px + 16px) !important; }
+            .content-card { padding: 20px !important; }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            h1 { font-size: 1.5rem !important; }
         }
     </style>
 @endpush

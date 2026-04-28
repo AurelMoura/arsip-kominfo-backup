@@ -126,6 +126,17 @@
     .btn-act-danger:hover { background: #dc2626; color: #fff; }
     .btn-act-success { background: #f0fdf4; color: #16a34a; }
     .btn-act-success:hover { background: #16a34a; color: #fff; }
+    .btn-act-disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+    .status-reason {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 600;
+        color: #7c2d12;
+        background: #ffedd5;
+    }
 
     /* Page header label */
     .page-label {
@@ -164,14 +175,37 @@
 <div class="row align-items-center mb-5">
     <div class="col-md-7">
         <p class="page-label mb-2">Manajemen Kepegawaian</p>
-        <h2 class="fw-bold mb-1 text-dark">Data Pegawai</h2>
-        <p class="text-muted mb-0">Kelola akun, status, dan informasi kepegawaian seluruh ASN yang terdaftar.</p>
+        <div class="d-flex align-items-center gap-3 mb-1">
+            <h2 class="fw-bold mb-0 text-dark">Data Pegawai {{ $status_label ?? 'Aktif' }}</h2>
+            @if($status === 'nonaktif')
+            <span class="badge bg-danger bg-opacity-10 text-danger fw-bold px-3 py-2 rounded-pill">
+                <i class="bi bi-exclamation-circle me-1"></i> Non Aktif
+            </span>
+            @else
+            <span class="badge bg-success bg-opacity-10 text-success fw-bold px-3 py-2 rounded-pill">
+                <i class="bi bi-check-circle me-1"></i> Aktif
+            </span>
+            @endif
+        </div>
+        <p class="text-muted mb-0">
+            @if($status === 'nonaktif')
+            Daftar pegawai dengan status akun non-aktif. Pegawai non-aktif tidak dapat mengakses sistem.
+            @else
+            Kelola akun, status, dan informasi kepegawaian seluruh ASN yang terdaftar dan aktif.
+            @endif
+        </p>
     </div>
     <div class="col-md-5 text-md-end mt-3 mt-md-0">
+        @if($status !== 'nonaktif')
         <button class="btn btn-gradient-primary shadow rounded-pill px-4 py-2 fw-semibold"
             data-bs-toggle="modal" data-bs-target="#modalTambah">
             <i class="bi bi-person-plus-fill me-2"></i>Registrasi Pegawai
         </button>
+        @else
+        <a href="{{ url('/pegawai?status=aktif') }}" class="btn btn-outline-secondary shadow rounded-pill px-4 py-2 fw-semibold">
+            <i class="bi bi-arrow-left me-2"></i>Kembali ke Data Aktif
+        </a>
+        @endif
     </div>
 </div>
 
@@ -180,12 +214,18 @@
     <div class="col-md-4">
         <div class="card card-modern p-4">
             <div class="d-flex align-items-center">
-                <div class="stat-icon-box bg-primary bg-opacity-10 text-primary me-3">
-                    <i class="bi bi-people-fill"></i>
+                <div class="stat-icon-box {{ $status === 'nonaktif' ? 'bg-danger bg-opacity-10 text-danger' : 'bg-primary bg-opacity-10 text-primary' }} me-3">
+                    <i class="bi {{ $status === 'nonaktif' ? 'bi-person-x-fill' : 'bi-people-fill' }}"></i>
                 </div>
                 <div>
                     <h3 class="fw-bold mb-0 text-dark" style="font-size:28px;">{{ $total_pegawai ?? 0 }}</h3>
-                    <small class="text-muted fw-semibold text-uppercase" style="font-size:10px; letter-spacing:.5px;">Total Pegawai</small>
+                    <small class="text-muted fw-semibold text-uppercase" style="font-size:10px; letter-spacing:.5px;">
+                        @if($status === 'nonaktif')
+                        Total Pegawai Non Aktif
+                        @else
+                        Total Pegawai Aktif
+                        @endif
+                    </small>
                 </div>
             </div>
         </div>
@@ -193,30 +233,99 @@
     <div class="col-md-4">
         <div class="card card-modern p-4">
             <div class="d-flex align-items-center">
-                <div class="stat-icon-box bg-success bg-opacity-10 text-success me-3">
-                    <i class="bi bi-person-check-fill"></i>
+                <div class="stat-icon-box bg-info bg-opacity-10 text-info me-3">
+                    <i class="bi bi-person-vcard-fill"></i>
                 </div>
                 <div>
-                    <h3 class="fw-bold mb-0 text-dark" style="font-size:28px;">{{ $pegawai->where('is_active', true)->count() }}</h3>
+                    <h3 class="fw-bold mb-0 text-dark" style="font-size:28px;">{{ $pegawai->count() }}</h3>
+                    <small class="text-muted fw-semibold text-uppercase" style="font-size:10px; letter-spacing:.5px;">Ditampilkan</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-modern p-4">
+            <div class="d-flex align-items-center">
+                <div class="stat-icon-box {{ $status === 'nonaktif' ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning' }} me-3">
+                    <i class="bi {{ $status === 'nonaktif' ? 'bi-person-check-fill' : 'bi-person-exclamation-fill' }}"></i>
+                </div>
+                <div>
+                    @if($status === 'nonaktif')
+                    <h3 class="fw-bold mb-0 text-dark" style="font-size:28px;">{{ \App\Models\User::where('role', 'pegawai')->where('is_active', true)->count() }}</h3>
                     <small class="text-muted fw-semibold text-uppercase" style="font-size:10px; letter-spacing:.5px;">Akun Aktif</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card card-modern p-4">
-            <div class="d-flex align-items-center">
-                <div class="stat-icon-box bg-danger bg-opacity-10 text-danger me-3">
-                    <i class="bi bi-person-x-fill"></i>
-                </div>
-                <div>
-                    <h3 class="fw-bold mb-0 text-dark" style="font-size:28px;">{{ $pegawai->where('is_active', false)->count() }}</h3>
+                    @else
+                    <h3 class="fw-bold mb-0 text-dark" style="font-size:28px;">{{ \App\Models\User::where('role', 'pegawai')->where('is_active', false)->count() }}</h3>
                     <small class="text-muted fw-semibold text-uppercase" style="font-size:10px; letter-spacing:.5px;">Akun Nonaktif</small>
+                    @endif
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+@if($status !== 'nonaktif')
+{{-- Statistik PNS & PPPK --}}
+<div class="row g-3 mb-4">
+    {{-- PNS --}}
+    <div class="col-md-6">
+        <div class="card card-modern p-4 border-0 h-100" style="border-left: 4px solid #2563eb !important;">
+            <div class="d-flex align-items-center mb-3">
+                <div class="stat-icon-box bg-primary bg-opacity-10 text-primary me-3">
+                    <i class="bi bi-person-badge-fill"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0 text-dark">PNS</h5>
+                    <small class="text-muted" style="font-size:11px;">Pegawai Negeri Sipil</small>
+                </div>
+                <span class="ms-auto badge bg-primary fs-6 px-3 py-2" style="border-radius:12px;">{{ $statPns['total'] }}</span>
+            </div>
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="rounded-3 p-3 text-center" style="background:#eff6ff;">
+                        <div class="fw-bold text-primary" style="font-size:22px;">{{ $statPns['L'] }}</div>
+                        <small class="text-muted fw-semibold"><i class="bi bi-gender-male me-1"></i>Laki-laki</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="rounded-3 p-3 text-center" style="background:#fdf2f8;">
+                        <div class="fw-bold text-danger" style="font-size:22px;">{{ $statPns['P'] }}</div>
+                        <small class="text-muted fw-semibold"><i class="bi bi-gender-female me-1"></i>Perempuan</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{-- PPPK --}}
+    <div class="col-md-6">
+        <div class="card card-modern p-4 border-0 h-100" style="border-left: 4px solid #059669 !important;">
+            <div class="d-flex align-items-center mb-3">
+                <div class="stat-icon-box bg-success bg-opacity-10 text-success me-3">
+                    <i class="bi bi-person-badge"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0 text-dark">PPPK</h5>
+                    <small class="text-muted" style="font-size:11px;">Pegawai Pemerintah dengan Perjanjian Kerja</small>
+                </div>
+                <span class="ms-auto badge bg-success fs-6 px-3 py-2" style="border-radius:12px;">{{ $statPppk['total'] }}</span>
+            </div>
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="rounded-3 p-3 text-center" style="background:#f0fdf4;">
+                        <div class="fw-bold text-success" style="font-size:22px;">{{ $statPppk['L'] }}</div>
+                        <small class="text-muted fw-semibold"><i class="bi bi-gender-male me-1"></i>Laki-laki</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="rounded-3 p-3 text-center" style="background:#fdf2f8;">
+                        <div class="fw-bold text-danger" style="font-size:22px;">{{ $statPppk['P'] }}</div>
+                        <small class="text-muted fw-semibold"><i class="bi bi-gender-female me-1"></i>Perempuan</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
 
 {{-- Tabel Utama --}}
 <div class="card card-modern border-0">
@@ -253,7 +362,6 @@
                     <tr>
                         <th class="ps-4" style="width:50px;">No</th>
                         <th>Pegawai</th>
-                        <th>NIP</th>
                         <th class="text-center">Status</th>
                         <th>Login Terakhir</th>
                         <th class="text-center">ASN</th>
@@ -285,15 +393,11 @@
                                     <div class="text-muted" style="font-size:11px;">
                                         {{ $p->pegawai?->status_pegawai ?? 'Pegawai' }}
                                     </div>
+                                    <div class="font-monospace text-primary fw-semibold" style="font-size:11px; margin-top:2px;">
+                                        {{ $p->pegawai_id }}
+                                    </div>
                                 </div>
                             </div>
-                        </td>
-
-                        {{-- NIP --}}
-                        <td>
-                            <span class="font-monospace text-primary fw-semibold" style="font-size:12px; background:#eff6ff; padding:4px 10px; border-radius:6px;">
-                                {{ $p->pegawai_id }}
-                            </span>
                         </td>
 
                         {{-- Status Akun --}}
@@ -306,6 +410,9 @@
                                 <span class="badge-status bg-danger bg-opacity-10 text-danger">
                                     <i class="bi bi-circle-fill" style="font-size:6px;"></i> Nonaktif
                                 </span>
+                                @if($p->deactivation_reason)
+                                    <div class="status-reason">{{ $p->deactivation_reason }}</div>
+                                @endif
                             @endif
                         </td>
 
@@ -369,23 +476,39 @@
 
 
                                 @if(Session::get('role') === 'superadmin')
-                                    {{-- Ubah Password (Modal) --}}
-                                    <button type="button" class="btn-act btn-act-key" title="Ubah Password" data-bs-toggle="modal" data-bs-target="#modalUbahPassword" data-id="{{ $p->id }}" data-nama="{{ $p->name }}">
-                                        <i class="bi bi-key-fill"></i>
-                                    </button>
+                                    {{-- Reset Password (ke NIP) --}}
+                                    <form id="resetPasswordForm-{{ $p->id }}" action="{{ url('/pegawai/'.$p->id.'/reset-password') }}" method="POST"
+                                        class="d-inline">
+                                        @csrf
+                                        <button type="button" class="btn-act btn-act-key" title="Reset Password ke NIP"
+                                            onclick="confirmResetPassword('{{ $p->id }}', '{{ $p->name }}', '{{ $p->pegawai_id }}')">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                    </form>
+                                    
                                     {{-- Toggle Status (SUPERADMIN) --}}
-                                    <form action="{{ url('/pegawai/'.$p->id.'/toggle-status') }}" method="POST"
+                                    <form id="toggleStatusForm-{{ $p->id }}" action="{{ url('/pegawai/'.$p->id.'/toggle-status') }}" method="POST"
                                         class="d-inline ms-1"
                                         style="display:inline"
-                                        onsubmit="if(!confirm('{{ $p->is_active ? 'Nonaktifkan' : 'Aktifkan' }} akun {{ addslashes($p->name) }}?')) return false;">
+                                        @if(!$p->is_active && $p->can_reactivate) onsubmit="return false;" @endif>
                                         @csrf
                                         @if($p->is_active)
-                                            <button type="submit" class="btn-act btn-act-danger" title="Nonaktifkan Akun">
+                                            <input type="hidden" name="deactivation_reason" value="">
+                                            <button type="button" class="btn-act btn-act-danger"
+                                                title="Nonaktifkan Akun"
+                                                onclick="openDeactivateModal('toggleStatusForm-{{ $p->id }}', '{{ addslashes($p->name) }}')">
                                                 <i class="bi bi-person-x-fill"></i>
                                             </button>
-                                        @else
-                                            <button type="submit" class="btn-act btn-act-success" title="Aktifkan Akun">
+                                        @elseif($p->can_reactivate)
+                                            <button type="button" class="btn-act btn-act-success" title="Aktifkan Akun"
+                                                onclick="confirmAktifkan('toggleStatusForm-{{ $p->id }}', '{{ addslashes($p->name) }}')">
                                                 <i class="bi bi-person-check-fill"></i>
+                                            </button>
+                                        @else
+                                            <button type="button" class="btn-act btn-act-disabled"
+                                                title="Tidak dapat diaktifkan kembali karena alasan {{ $p->deactivation_reason ?? 'nonaktif permanen' }}"
+                                                disabled>
+                                                <i class="bi bi-lock-fill"></i>
                                             </button>
                                         @endif
                                     </form>
@@ -420,43 +543,6 @@
     </div>
 </div>
 
-{{-- MODAL: Ubah Password Pegawai (HANYA 1X DI LUAR LOOP) --}}
-<div class="modal fade" id="modalUbahPassword" tabindex="-1" aria-labelledby="modalUbahPasswordLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content shadow-lg border-0">
-            <div class="modal-header-custom text-center">
-                <h4 class="fw-bold mb-1 text-white" id="modalUbahPasswordLabel">
-                    <i class="bi bi-key-fill me-2"></i>Ubah Password Pegawai
-                </h4>
-                <p class="opacity-75 text-white mb-0 small">Masukkan password baru untuk pegawai berikut.</p>
-            </div>
-            <form id="formUbahPassword" autocomplete="off">
-                @csrf
-                <input type="hidden" name="user_id" id="ubahPasswordUserId">
-                <div class="modal-body p-5 text-start">
-                    <div class="bg-light rounded-4 p-4 mb-4 border border-dashed border-primary border-opacity-20">
-                        <div class="small text-muted mb-1">Nama Pegawai:</div>
-                        <div class="text-dark fw-bold" style="font-size: 16px;" id="ubahPasswordNama"></div>
-                    </div>
-                    <div id="ubahPasswordError" class="alert alert-danger rounded-3 py-2 px-3 mb-4 d-none"></div>
-                    <div class="mb-4">
-                        <label class="form-label small fw-bold text-uppercase text-secondary" style="letter-spacing: 1px;">Password Baru *</label>
-                        <input type="password" name="password_baru" class="form-control bg-light border-0 py-3 rounded-3" placeholder="Minimal 8 karakter dengan kombinasi huruf besar, kecil, angka, dan simbol" required>
-                    </div>
-                    <div class="mb-0">
-                        <label class="form-label small fw-bold text-uppercase text-secondary" style="letter-spacing: 1px;">Konfirmasi Password *</label>
-                        <input type="password" name="konfirmasi_password" class="form-control bg-light border-0 py-3 rounded-3" placeholder="Ulangi password baru" required>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 p-5 pt-0">
-                    <button type="button" class="btn btn-light px-4 py-3 rounded-pill fw-semibold" data-bs-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-gradient-primary px-4 py-3 rounded-pill fw-bold shadow">Simpan Password Baru</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 {{-- ============================================================ --}}
 {{-- MODAL: Registrasi Pegawai Baru --}}
 {{-- ============================================================ --}}
@@ -487,6 +573,7 @@
                             <input type="text" name="nip" id="inputNip"
                                 class="form-control @error('nip') is-invalid @enderror"
                                 placeholder="Contoh: 198812310000..."
+                                value="{{ old('nip') }}"
                                 maxlength="18"
                                 inputmode="numeric"
                                 pattern="\d*"
@@ -510,6 +597,7 @@
                         <input type="text" name="nama_lengkap" id="inputNama"
                             class="form-control"
                             placeholder="Masukkan nama lengkap..."
+                            value="{{ old('nama_lengkap') }}"
                             required>
                     </div>
 
@@ -538,8 +626,86 @@
     </div>
 </div>
 
+{{-- Modal Alasan Nonaktif Pegawai --}}
+<div class="modal fade" id="modalNonaktifReason" tabindex="-1" aria-labelledby="modalNonaktifReasonLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header-custom">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="fw-bold mb-1 text-white" id="modalNonaktifReasonLabel">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>Konfirmasi Nonaktifkan Pegawai
+                        </h5>
+                        <p class="mb-0 small opacity-75 text-white">Pilih alasan nonaktif untuk melanjutkan.</p>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body p-4">
+                <p class="mb-3 small text-muted">Akun: <strong id="nonaktifTargetName">-</strong></p>
+
+                <div class="d-grid gap-2" id="nonaktifReasonOptions">
+                    <label class="form-check p-3 rounded-3 border">
+                        <input class="form-check-input" type="radio" name="nonaktif_reason_choice" value="Mutasi">
+                        <span class="form-check-label ms-1">Mutasi</span>
+                    </label>
+                    <label class="form-check p-3 rounded-3 border">
+                        <input class="form-check-input" type="radio" name="nonaktif_reason_choice" value="Pindah Instansi">
+                        <span class="form-check-label ms-1">Pindah Instansi</span>
+                    </label>
+                    <label class="form-check p-3 rounded-3 border">
+                        <input class="form-check-input" type="radio" name="nonaktif_reason_choice" value="Pensiun">
+                        <span class="form-check-label ms-1">Pensiun</span>
+                    </label>
+                    <label class="form-check p-3 rounded-3 border">
+                        <input class="form-check-input" type="radio" name="nonaktif_reason_choice" value="Meninggal">
+                        <span class="form-check-label ms-1">Meninggal</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer border-0 px-4 pb-4 pt-0">
+                <button type="button" class="btn btn-light px-4 rounded-pill fw-semibold" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-danger px-4 rounded-pill fw-bold" id="btnConfirmNonaktif">
+                    <i class="bi bi-person-x-fill me-1"></i> Nonaktifkan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
+    function showCenterToast(message, type = 'warning', duration = 3200) {
+        const existingToast = document.getElementById('centerToastMessage');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
+        const colors = {
+            success: '#16a34a',
+            error: '#dc2626',
+            warning: '#d97706',
+            info: '#2563eb'
+        };
+
+        const toast = document.createElement('div');
+        toast.id = 'centerToastMessage';
+        toast.textContent = message;
+        toast.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.96);z-index:1065;padding:14px 18px;border-radius:12px;color:#fff;font-weight:700;box-shadow:0 14px 30px rgba(15,23,42,.28);background:${colors[type] || colors.info};opacity:0;transition:all .2s ease;`;
+        document.body.appendChild(toast);
+
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translate(-50%,-50%) scale(1)';
+        });
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translate(-50%,-50%) scale(.96)';
+            setTimeout(() => toast.remove(), 220);
+        }, duration);
+    }
+
     // ── Live search filter ─────────────────────────────────────────
     document.getElementById('searchPegawai')?.addEventListener('keyup', function () {
         const q = this.value.toLowerCase();
@@ -597,6 +763,94 @@
         el.style.display = 'block';
         el.className = `form-text mt-1 text-${type}`;
         el.innerHTML = html;
+    }
+
+    let selectedDeactivateFormId = null;
+    const deactivateModalEl = document.getElementById('modalNonaktifReason');
+    const deactivateModal = deactivateModalEl ? new bootstrap.Modal(deactivateModalEl) : null;
+
+    function confirmAktifkan(formId, userName) {
+        const toastEl = document.createElement('div');
+        toastEl.id = 'toastAktifkanConfirm';
+        toastEl.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:1090;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 8px 30px rgba(15,23,42,.15);padding:16px 20px;min-width:280px;max-width:340px;';
+        toastEl.innerHTML = `
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-person-check-fill text-success" style="font-size:18px;"></i>
+                <span class="fw-bold text-dark" style="font-size:14px;">Aktifkan Pegawai</span>
+            </div>
+            <p class="text-muted mb-3" style="font-size:13px;">Aktifkan kembali akun <strong>${userName}</strong>?</p>
+            <div class="d-flex gap-2 justify-content-end">
+                <button class="btn btn-sm btn-light rounded-pill px-3" onclick="document.getElementById('toastAktifkanConfirm').remove()">Batal</button>
+                <button class="btn btn-sm btn-success rounded-pill px-3" onclick="document.getElementById('${formId}').submit(); document.getElementById('toastAktifkanConfirm').remove()">Ya, Aktifkan</button>
+            </div>`;
+        const existing = document.getElementById('toastAktifkanConfirm');
+        if (existing) existing.remove();
+        document.body.appendChild(toastEl);
+    }
+
+    function openDeactivateModal(formId, userName) {
+        selectedDeactivateFormId = formId;
+        document.getElementById('nonaktifTargetName').textContent = userName;
+
+        document.querySelectorAll('input[name="nonaktif_reason_choice"]').forEach(radio => {
+            radio.checked = false;
+        });
+
+        deactivateModal?.show();
+    }
+
+    document.getElementById('btnConfirmNonaktif')?.addEventListener('click', function () {
+        const selectedReason = document.querySelector('input[name="nonaktif_reason_choice"]:checked');
+        if (!selectedReason) {
+            alert('Pilih alasan nonaktif terlebih dahulu.');
+            return;
+        }
+
+        if (!selectedDeactivateFormId) {
+            return;
+        }
+
+        const form = document.getElementById(selectedDeactivateFormId);
+        if (!form) {
+            return;
+        }
+
+        const hiddenReasonInput = form.querySelector('input[name="deactivation_reason"]');
+        if (hiddenReasonInput) {
+            hiddenReasonInput.value = selectedReason.value;
+        }
+
+        deactivateModal?.hide();
+        form.submit();
+    });
+
+    @if(session('duplicate_nip'))
+        document.addEventListener('DOMContentLoaded', function () {
+            const modalEl = document.getElementById('modalTambah');
+            if (modalEl) {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+            }
+
+            showCenterToast('pegawai tersebut sudah ditambahkan', 'warning');
+        });
+    @endif
+
+    function confirmResetPassword(pegawaiId, pegawaiName, pegawaiNip) {
+        Swal.fire({
+            title: 'Reset Password?',
+            html: `Reset password <strong>${pegawaiName}</strong> ke NIP: <strong>${pegawaiNip}</strong>?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Reset',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                document.getElementById(`resetPasswordForm-${pegawaiId}`).submit();
+            }
+        });
     }
 </script>
 @endpush

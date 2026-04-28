@@ -160,11 +160,14 @@
         }
 
         /* Responsive Mobile */
-        @media (max-width: 991px) {
-            .sidebar { width: 80px; }
-            .sidebar .text-white, .sidebar small, .sidebar .ms-auto, .sidebar .text-truncate, .sidebar span { display: none; }
-            .main-content { margin-left: 80px; padding: 20px; }
-            .card-stat { padding: 15px; }
+        @media (max-width: 991.98px) {
+            .main-content { padding: 16px !important; padding-top: calc(56px + 16px) !important; }
+            .card-stat { padding: 15px !important; }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            h1 { font-size: 1.5rem !important; }
         }
     </style>
 @endpush
@@ -226,11 +229,12 @@
                 <thead>
                     <tr>
                         <th width="5%" class="text-center">No</th>
-                        <th width="35%">Nama Dokumen</th>
-                        <th width="20%">Tanggal Upload</th>
+                        <th width="30%">Nama Dokumen</th>
+                        <th width="18%">Tanggal Upload</th>
                         <th width="15%">Status</th>
-                        <th width="10%">Tipe</th>
-                        <th width="15%" class="text-center">Aksi</th>
+                        <th width="12%">Aktif</th>
+                        <th width="10%" class="text-center">Tipe</th>
+                        <th width="10%" class="text-center">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -249,6 +253,13 @@
                                 <span class="badge rounded-pill bg-warning text-dark px-3 py-2" style="font-size: 11px;">Menunggu</span>
                             @elseif($doc->status === 'Approved')
                                 <span class="badge rounded-pill bg-success px-3 py-2" style="font-size: 11px;">Disetujui</span>
+                            @endif
+                        </td>
+                        <td>
+                            @if($doc->is_active)
+                                <span class="badge bg-primary text-white rounded-pill px-3 py-2" style="font-size: 11px;">Aktif</span>
+                            @else
+                                <span class="badge bg-secondary text-white rounded-pill px-3 py-2" style="font-size: 11px;">Tidak Aktif</span>
                             @endif
                         </td>
                         <td><span class="badge-pdf">PDF</span></td>
@@ -286,8 +297,9 @@
                         <th width="5%" class="text-center">No</th>
                         <th width="25%">Nama Dokumen</th>
                         <th width="20%">Tanggal Upload</th>
-                        <th width="30%">Alasan Penolakan</th>
-                        <th width="20%" class="text-center">Aksi</th>
+                        <th width="25%">Alasan Penolakan</th>
+                        <th width="10%">Aktif</th>
+                        <th width="15%" class="text-center">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -306,9 +318,16 @@
                                 {{ $doc->rejection_reason }}
                             </div>
                         </td>
+                        <td>
+                            @if($doc->is_active)
+                                <span class="badge bg-primary text-white rounded-pill px-3 py-2" style="font-size: 11px;">Aktif</span>
+                            @else
+                                <span class="badge bg-secondary text-white rounded-pill px-3 py-2" style="font-size: 11px;">Tidak Aktif</span>
+                            @endif
+                        </td>
                         <td class="text-center">
                             <a href="{{ url('/pegawai/arsip/view/'.$doc->id) }}" target="_blank" class="btn btn-sm btn-outline-primary border-0 fw-bold me-1"><i class="bi bi-eye"></i></a>
-                            <form action="{{ url('/pegawai/arsip/delete/'.$doc->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin menghapus dokumen ini?')">
+                            <form action="{{ url('/pegawai/arsip/delete/'.$doc->id) }}" method="POST" class="d-inline" onsubmit="confirmDeleteSweetAlert(this, 'Yakin ingin menghapus dokumen?', 'Dokumen yang dihapus tidak bisa dikembalikan!'); return false;">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-outline-danger border-0 fw-bold"><i class="bi bi-trash"></i> Hapus</button>

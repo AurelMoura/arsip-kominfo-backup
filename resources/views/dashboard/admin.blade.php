@@ -143,6 +143,22 @@
         .header-profile:hover {
             background: #f8fafc;
         }
+
+        @media (max-width: 991.98px) {
+            .main-content {
+                padding: 16px !important;
+                padding-top: calc(56px + 16px) !important;
+            }
+            .welcome-banner { padding: 20px !important; }
+            .welcome-banner .row > div + div { margin-top: 16px; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            .stat-card { padding: 18px !important; }
+            .welcome-banner { padding: 16px !important; }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+            h2 { font-size: 1.3rem !important; }
+        }
     </style>
 </head>
 <body>

@@ -31,6 +31,7 @@ class Pegawai extends Model
         'status_pegawai',
         'email',
         'no_hp',
+        'alamat_ktp',
         'no_kk',
         'no_nik',
         'no_bpjs',
@@ -54,7 +55,14 @@ class Pegawai extends Model
         // Kolom DRH
         'data_keluarga',
         'dokumen_pendukung',
-        'drh_lengkap'
+        'drh_lengkap',
+        'is_locked_keluarga',
+        'is_locked_pendidikan',
+        'is_locked_diklat',
+        'is_locked_jabatan',
+        'is_locked_penghargaan',
+        'is_locked_sertifikasi',
+        'is_drh_locked',
     ];
 
     // Casting untuk kolom
@@ -67,7 +75,14 @@ class Pegawai extends Model
             // Casting kolom JSON DRH
             'data_keluarga' => 'array',
             'dokumen_pendukung' => 'array',
-            'drh_lengkap' => 'boolean'
+            'drh_lengkap' => 'boolean',
+            'is_locked_keluarga' => 'boolean',
+            'is_locked_pendidikan' => 'boolean',
+            'is_locked_diklat' => 'boolean',
+            'is_locked_jabatan' => 'boolean',
+            'is_locked_penghargaan' => 'boolean',
+            'is_locked_sertifikasi' => 'boolean',
+            'is_drh_locked' => 'boolean',
         ];
     }
 

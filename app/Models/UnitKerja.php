@@ -22,4 +22,10 @@ class UnitKerja extends Model
     {
         return $this->hasMany(RiwayatJabatan::class, 'unit_kerja_id', 'id');
     }
+
+    // Sumber utama ASN pada master unit kerja
+    public function pegawais()
+    {
+        return $this->hasMany(Pegawai::class, 'unit_kerja_id', 'id');
+    }
 }

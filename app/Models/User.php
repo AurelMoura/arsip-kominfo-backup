@@ -29,6 +29,8 @@ class User extends Authenticatable
         'profil_dasar_lengkap',
         'password_change_count',
         'is_active',
+        'deactivation_reason',
+        'can_reactivate',
         'last_login_at',
         'last_password_change',
     ];
@@ -50,6 +52,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'profil_dasar_lengkap' => 'boolean',
             'is_active' => 'boolean',
+            'can_reactivate' => 'boolean',
             'last_password_change' => 'datetime',
             'last_login_at' => 'datetime',
         ];

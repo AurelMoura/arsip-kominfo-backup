@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Detail DRH Pegawai - {{ $user->name }}</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -199,24 +200,65 @@
 
         /* Tables and Info Boxes */
         .subtable {
-            border-radius: 16px;
-            overflow: hidden;
+            border-radius: 0;
+            overflow: visible;
             border: 1px solid #f1f5f9;
+            min-width: max-content;
         }
 
         .subtable th {
             background: #f8fafc;
             text-transform: uppercase;
-            font-size: 0.75rem;
+            font-size: 0.68rem;
             font-weight: 700;
             letter-spacing: 0.05em;
-            padding: 18px;
+            padding: 12px 13px;
             color: #64748b;
+            white-space: nowrap;
         }
 
         .subtable td {
-            padding: 16px;
+            padding: 11px 13px;
             vertical-align: middle;
+            font-size: 0.79rem;
+            white-space: nowrap;
+        }
+
+        .family-subtable th {
+            font-size: 0.64rem;
+            padding: 10px 12px;
+        }
+
+        .family-subtable td {
+            font-size: 0.74rem;
+            padding: 9px 12px;
+        }
+
+        .glass-card .table-responsive {
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.9) transparent;
+        }
+
+        .glass-card .table-responsive::-webkit-scrollbar {
+            height: 10px;
+        }
+
+        .glass-card .table-responsive::-webkit-scrollbar-track {
+            background: rgba(226, 232, 240, 0.5);
+            border-radius: 999px;
+        }
+
+        .glass-card .table-responsive::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.95);
+            border-radius: 999px;
+        }
+
+        .family-empty {
+            border: 1px dashed #cbd5e1;
+            border-radius: 18px;
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
         }
 
         .info-card-sm {
@@ -305,19 +347,21 @@
         }
 
         /* Mobile Adjustments */
-        @media (max-width: 991px) {
-            .sidebar { transform: translateX(-100%); }
-            .app-sidebar { width: 80px !important; min-width: 80px !important; max-width: 80px !important; }
-            .app-content { margin-left: 80px; width: calc(100% - 80px); }
-            .app-main { padding: 25px; }
-            .gs-brand-text, .gs-profile-text, .gs-nav-text, .gs-profile-action, .gs-role { display: none !important; }
-            .main-content { margin-left: 0; padding: 20px; }
+        @media (max-width: 991.98px) {
+            .app-content { margin-left: 0 !important; width: 100% !important; }
+            .app-main { padding: 16px !important; padding-top: calc(56px + 16px) !important; }
+            .main-content { margin-left: 0 !important; }
+            .nav-pills { flex-wrap: wrap !important; gap: 6px !important; }
+            .nav-pills .nav-link { margin-right: 0 !important; font-size: 0.8rem !important; padding: 8px 12px !important; }
             .detail-row { grid-template-columns: 1fr; gap: 8px; }
+        }
+        @media (max-width: 575.98px) {
+            .app-main { padding: 10px !important; padding-top: calc(56px + 10px) !important; }
         }
     </style>
 </head>
 <body>
-
+<div data-pegawai-id="{{ $user->pegawai_id }}">
 @if($isAdmin)
 @include('components.sidebar')
 <div class="main-content">
@@ -346,6 +390,17 @@
             <a href="{{ url('/pegawai') }}" class="btn btn-light border px-4 rounded-3 fw-bold">
                 <i class="bi bi-arrow-left me-2"></i> Kembali
             </a>
+            @if($drhData?->is_drh_locked)
+            <button type="button" class="btn btn-warning fw-bold px-4 rounded-3" id="admin-unlock-all-drh-btn"
+                data-pegawai-id-drh="{{ $drhData->id }}">
+                <i class="bi bi-unlock-fill me-2"></i> Unlock Semua DRH
+            </button>
+            @else
+            <button type="button" class="btn btn-danger fw-bold px-4 rounded-3" id="admin-lock-all-drh-btn"
+                data-pegawai-id-drh="{{ $drhData->id }}">
+                <i class="bi bi-lock-fill me-2"></i> Lock Semua DRH
+            </button>
+            @endif
             <a href="{{ url('/admin/pegawai/'.$user->id.'/drh/print') }}" target="_blank" class="btn btn-primary px-4 rounded-3 shadow-sm fw-bold">
                 <i class="bi bi-printer me-2"></i> Print Dokumen
             </a>
@@ -409,6 +464,163 @@
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-penghargaan"><i class="bi bi-award me-2"></i> Penghargaan</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-sertifikasi"><i class="bi bi-patch-check me-2"></i> Sertifikasi</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-dokumen"><i class="bi bi-file-earmark-lock me-2"></i> Legalitas</button></li>
+           <script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    var sectionLockMap = {
+        'keluarga':    'Keluarga',
+        'pendidikan':  'Pendidikan',
+        'diklat':      'Diklat',
+        'jabatan':     'Jabatan',
+        'penghargaan': 'Penghargaan',
+        'sertifikasi': 'Sertifikasi',
+        'dokumen':     'Legalitas',
+    };
+
+    document.querySelectorAll('.unlock-drh-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var section = btn.getAttribute('data-section');
+            var isLocked = btn.getAttribute('data-locked') === 'true';
+            var label = sectionLockMap[section] || section;
+            var actionLabel = isLocked ? 'Unlock' : 'Lock';
+            var actionText  = isLocked ? 'membuka kunci' : 'mengunci';
+
+            if (!label) return;
+
+            Swal.fire({
+                icon: 'question',
+                title: actionLabel + ' Data ' + label,
+                text: 'Yakin ingin ' + actionText + ' data ' + label + '?',
+                showCancelButton: true,
+                confirmButtonText: 'Ya, ' + actionLabel,
+                cancelButtonText: 'Batal',
+                confirmButtonColor: isLocked ? '#2563eb' : '#dc3545',
+                cancelButtonColor: '#64748b',
+            }).then(function (result) {
+                if (!result.isConfirmed) return;
+
+                var endpoint = isLocked ? '/admin/drh/unlock-section' : '/admin/drh/lock-section';
+                fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({
+                        pegawai_id: document.querySelector('[data-pegawai-id]')?.getAttribute('data-pegawai-id'),
+                        section: section,
+                    }),
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.status === 'success') {
+                        if (isLocked) {
+                            Swal.fire({ icon: 'success', title: 'Berhasil Di-Unlock', text: 'Data ' + label + ' berhasil dibuka.', confirmButtonColor: '#2563eb' });
+                            btn.setAttribute('data-locked', 'false');
+                            btn.innerHTML = '<i class="bi bi-lock"></i> Lock Data ' + label;
+                            btn.classList.remove('btn-success', 'btn-outline-secondary');
+                            btn.classList.add('btn-outline-danger');
+                        } else {
+                            Swal.fire({ icon: 'success', title: 'Berhasil Di-Lock', text: 'Data ' + label + ' berhasil dikunci.', confirmButtonColor: '#2563eb' });
+                            btn.setAttribute('data-locked', 'true');
+                            btn.innerHTML = '<i class="bi bi-unlock"></i> Unlock Data ' + label;
+                            btn.classList.remove('btn-outline-danger', 'btn-success');
+                            btn.classList.add('btn-outline-secondary');
+                        }
+                    } else {
+                        Swal.fire('Gagal', data.message || 'Terjadi kesalahan.', 'error');
+                    }
+                })
+                .catch(function () { Swal.fire('Gagal', 'Tidak dapat menghubungi server.', 'error'); });
+            });
+        });
+    });
+
+    // UNLOCK SEMUA DRH (admin)
+    var unlockAllBtn = document.getElementById('admin-unlock-all-drh-btn');
+    if (unlockAllBtn) {
+        unlockAllBtn.addEventListener('click', function () {
+            var pegawaiId = unlockAllBtn.getAttribute('data-pegawai-id-drh');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Konfirmasi Unlock Semua DRH',
+                text: 'Semua data DRH akan dibuka kuncinya. Pegawai dapat mengedit dan menghapus data kembali.',
+                showCancelButton: true,
+                confirmButtonText: 'Ya, Unlock Semua',
+                cancelButtonText: 'Batal',
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#64748b',
+            }).then(function (result) {
+                if (!result.isConfirmed) return;
+                fetch('/admin/drh/unlock-legal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ pegawai_id: pegawaiId }),
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.status === 'success') {
+                        Swal.fire({ icon: 'success', title: 'Berhasil Di-Unlock', text: 'Semua data DRH berhasil dibuka kuncinya.', timer: 1500, showConfirmButton: false });
+                        setTimeout(function () { location.reload(); }, 1200);
+                    } else {
+                        Swal.fire('Gagal', data.message || 'Terjadi kesalahan.', 'error');
+                    }
+                })
+                .catch(function () { Swal.fire('Gagal', 'Tidak dapat menghubungi server.', 'error'); });
+            });
+        });
+    }
+
+    // LOCK SEMUA DRH (admin)
+    var lockAllBtn = document.getElementById('admin-lock-all-drh-btn');
+    if (lockAllBtn) {
+        lockAllBtn.addEventListener('click', function () {
+            var pegawaiId = lockAllBtn.getAttribute('data-pegawai-id-drh');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Konfirmasi Lock Semua DRH',
+                text: 'Semua data DRH akan dikunci. Tombol edit dan hapus di sisi pegawai akan dinonaktifkan.',
+                showCancelButton: true,
+                confirmButtonText: 'Ya, Lock Semua',
+                cancelButtonText: 'Batal',
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#64748b',
+            }).then(function (result) {
+                if (!result.isConfirmed) return;
+                fetch('/admin/drh/lock-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ pegawai_id: pegawaiId }),
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.status === 'success') {
+                        Swal.fire({ icon: 'success', title: 'Berhasil Di-Lock', text: 'Semua data DRH berhasil dikunci.', timer: 1500, showConfirmButton: false });
+                        setTimeout(function () { location.reload(); }, 1200);
+                    } else {
+                        Swal.fire('Gagal', data.message || 'Terjadi kesalahan.', 'error');
+                    }
+                })
+                .catch(function () { Swal.fire('Gagal', 'Tidak dapat menghubungi server.', 'error'); });
+            });
+        });
+    }
+
+});
+</script>
             </ul>
 
             <div class="tab-content">
@@ -452,6 +664,7 @@
                                 ['label' => 'TMT Jabatan', 'value' => $pegawai?->tmt_jabatan ? $pegawai->tmt_jabatan->format('d F Y') : '-', 'icon' => 'calendar-date'],
                                 ['label' => 'Eselon Jabatan', 'value' => $eselonLabel, 'icon' => 'diagram-3'],
                                 ['label' => 'Alamat Domisili', 'value' => $pegawai?->alamat ?? 'Alamat belum diinput ke dalam sistem.', 'icon' => 'geo-alt'],
+                                ['label' => 'Alamat Sesuai KTP', 'value' => $pegawai?->alamat_ktp ?? 'Alamat sesuai KTP belum diinput ke dalam sistem.', 'icon' => 'geo'],
                             ];
 
                             if ($pegawai?->status_pegawai === 'PPPK') {
@@ -475,76 +688,107 @@
                 </div>
 
                 <div class="tab-pane fade" id="tab-keluarga">
+                                        @if($isAdmin)
+                                        <div class="d-flex justify-content-end mb-2">
+                                            @php $isKelLocked = $drhData?->is_locked_keluarga ?? false; @endphp
+                                            <button class="btn btn-sm {{ $isKelLocked ? 'btn-outline-secondary' : 'btn-outline-danger' }} unlock-drh-btn" data-section="keluarga" data-locked="{{ $isKelLocked ? 'true' : 'false' }}" title="{{ $isKelLocked ? 'Unlock' : 'Lock' }} Data Keluarga"><i class="bi bi-{{ $isKelLocked ? 'unlock' : 'lock' }}"></i> {{ $isKelLocked ? 'Unlock' : 'Lock' }} Data Keluarga</button>
+                                        </div>
+                                        @endif
+                    @php
+                        $pasangan = $drhData->data_keluarga['pasangan'] ?? [];
+                        $pasanganRows = !empty($pasangan['nama']) ? [$pasangan] : [];
+                        $anakList = $drhData->data_keluarga['anak'] ?? [];
+                        $pasanganFileUrl = !empty($pasangan['file']) ? Storage::disk('public')->url($pasangan['file']) : null;
+                    @endphp
+
                     <div class="glass-card p-4 mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-4">
                             <h5 class="fw-bold mb-0 text-danger"><i class="bi bi-heart-fill me-2"></i> Data Pasangan</h5>
                         </div>
-                        @php $pasangan = $drhData->data_keluarga['pasangan'] ?? []; @endphp
-                        @if($pasangan && ($pasangan['nama'] ?? false))
-                            <div class="row bg-light rounded-4 p-4 g-3">
-                                <div class="col-md-6">
-                                    <small class="text-muted d-block">Nama Lengkap</small>
-                                    <span class="fw-bold">{{ $pasangan['nama'] }}</span>
+                        @if(count($pasanganRows) > 0)
+                                <div class="table-responsive">
+                                    <table class="table subtable family-subtable">
+                                        <thead>
+                                            <tr>
+                                                <th>Nama Lengkap</th>
+                                                <th>NIK</th>
+                                                <th>Tempat, Tanggal Lahir</th>
+                                                <th>Pekerjaan</th>
+                                                <th>No. Akta Nikah</th>
+                                                <th>Status</th>
+                                                <th class="text-center">File</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($pasanganRows as $row)
+                                            <tr>
+                                                <td class="fw-bold text-dark">{{ $row['nama'] ?? '-' }}</td>
+                                                <td>{{ $row['nik'] ?? '-' }}</td>
+                                                <td>{{ $row['tempat_lahir'] ?? '-' }}, {{ !empty($row['tanggal_lahir']) ? \Carbon\Carbon::parse($row['tanggal_lahir'])->format('d-m-Y') : '-' }}</td>
+                                                <td class="{{ empty($row['pekerjaan']) ? 'text-muted opacity-50' : '' }}">{{ $row['pekerjaan'] ?? '-' }}</td>
+                                                <td>{{ $row['no_akta_nikah'] ?? '-' }}</td>
+                                                <td>{{ $row['status'] ?? '-' }} • {{ $row['status_hidup'] ?? '-' }}</td>
+                                                <td class="text-center">
+                                                    @if($pasanganFileUrl)
+                                                        <a href="{{ $pasanganFileUrl }}" target="_blank" class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-pdf"></i></a>
+                                                    @else
+                                                        <span class="text-muted">-</span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div class="col-md-6">
-                                    <small class="text-muted d-block">Pekerjaan</small>
-                                    <span class="fw-bold">{{ $pasangan['pekerjaan'] ?? '-' }}</span>
-                                </div>
-                                <div class="col-md-6">
-                                    <small class="text-muted d-block">NIK Pasangan</small>
-                                    <span class="fw-bold">{{ $pasangan['nik'] ?? '-' }}</span>
-                                </div>
-                                <div class="col-md-6">
-                                    <small class="text-muted d-block">Tempat, Tanggal Lahir</small>
-                                    <span class="fw-bold">{{ $pasangan['tempat_lahir'] }}, {{ $pasangan['tanggal_lahir'] }}</span>
-                                </div>
-                                <div class="col-md-6">
-                                    <small class="text-muted d-block">No. Akta Nikah</small>
-                                    <span class="fw-bold">{{ $pasangan['no_akta_nikah'] ?? '-' }}</span>
-                                </div>
-                            </div>
                         @else
-                            <div class="text-center py-5 border border-dashed rounded-4">
+                            <div class="family-empty text-center py-5">
                                 <i class="bi bi-heartbreak fs-1 text-muted opacity-25"></i>
-                                <p class="text-muted mt-2">Data pasangan belum tercatat.</p>
+                                <p class="text-muted mt-2 mb-0">Data pasangan belum tercatat.</p>
                             </div>
                         @endif
                     </div>
 
-                    <div class="glass-card p-4">
+                    <div class="glass-card p-4 mb-4">
                         <h5 class="fw-bold mb-4 text-info"><i class="bi bi-people-fill me-2"></i> Data Anak</h5>
-                        @php $anakList = $drhData->data_keluarga['anak'] ?? []; @endphp
                         @if(is_array($anakList) && count($anakList) > 0)
-                            <div class="table-responsive">
-                                <table class="table subtable mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>Nama Lengkap</th>
-                                            <th>NIK</th>
-                                            <th>Tempat, Tanggal Lahir</th>
-                                            <th class="text-center">Akta Kelahiran</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($anakList as $anak)
-                                        <tr>
-                                            <td class="fw-bold text-dark">{{ $anak['nama'] }}</td>
-                                            <td>{{ $anak['nik'] ?? '-' }}</td>
-                                            <td>{{ $anak['tempat_lahir'] }}, {{ $anak['tanggal_lahir'] }}</td>
-                                            <td class="text-center">
-                                                @if(!empty($anak['file']))
-                                                    <a href="{{ asset('storage/'.$anak['file']) }}" target="_blank" class="btn btn-sm btn-light rounded-circle"><i class="bi bi-eye text-primary"></i></a>
-                                                @else
-                                                    <span class="text-muted small">-</span>
-                                                @endif
-                                            </td>
-                                        </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
+                                <div class="table-responsive">
+                                    <table class="table subtable family-subtable">
+                                        <thead>
+                                            <tr>
+                                                <th>Nama Anak</th>
+                                                <th>NIK</th>
+                                                <th>Jenis Kelamin</th>
+                                                <th>Tempat, Tanggal Lahir</th>
+                                                <th>Pekerjaan</th>
+                                                <th>Status Kawin</th>
+                                                <th>Status Anak</th>
+                                                <th class="text-center">File</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($anakList as $anak)
+                                            <tr>
+                                                <td class="fw-bold text-dark">{{ $anak['nama'] ?? '-' }}</td>
+                                                <td>{{ $anak['nik'] ?? '-' }}</td>
+                                                <td>{{ ($anak['jenis_kelamin'] ?? '') === 'L' ? 'Laki-laki' : (($anak['jenis_kelamin'] ?? '') === 'P' ? 'Perempuan' : '-') }}</td>
+                                                <td>{{ $anak['tempat_lahir'] ?? '-' }}, {{ !empty($anak['tanggal_lahir']) ? \Carbon\Carbon::parse($anak['tanggal_lahir'])->format('d-m-Y') : '-' }}</td>
+                                                <td class="{{ empty($anak['pekerjaan']) ? 'text-muted opacity-50' : '' }}">{{ $anak['pekerjaan'] ?? '-' }}</td>
+                                                <td>{{ $anak['status_kawin'] ?? '-' }}</td>
+                                                <td>{{ $anak['status_anak'] ?? '-' }}</td>
+                                                <td class="text-center">
+                                                    @if(!empty($anak['file']))
+                                                        <a href="{{ Storage::disk('public')->url($anak['file']) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark-pdf"></i></a>
+                                                    @else
+                                                        <span class="text-muted">-</span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
                         @else
-                            <div class="text-center py-4">Data anak tidak ditemukan.</div>
+                            <div class="family-empty text-center py-4">Data anak tidak ditemukan.</div>
                         @endif
                     </div>
 
@@ -558,67 +802,91 @@
                         $saudaraList = data_get($drhData, 'data_keluarga.saudara', []);
                     @endphp
 
+                    @php
+                        $orangTuaRows = [];
+                        if (!empty($ayah['nama'])) {
+                            $orangTuaRows[] = array_merge(['hubungan' => 'Ayah Kandung'], $ayah);
+                        }
+                        if (!empty($ibu['nama'])) {
+                            $orangTuaRows[] = array_merge(['hubungan' => 'Ibu Kandung'], $ibu);
+                        }
+                    @endphp
+
                     <div class="glass-card p-4 mt-4 mb-4">
                         <h5 class="fw-bold mb-4 text-primary"><i class="bi bi-person-vcard-fill me-2"></i> Data Orang Tua</h5>
-                        <div class="row g-4">
-                            <div class="col-lg-6">
-                                <div class="info-card-sm h-100">
-                                    <h6 class="fw-bold mb-3 text-primary">Ayah Kandung</h6>
-                                    <div class="d-grid gap-3">
-                                        <div><small class="text-muted d-block">Nama</small><span class="fw-bold">{{ $ayah['nama'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">NIK</small><span class="fw-bold">{{ $ayah['nik'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Tanggal Lahir</small><span class="fw-bold">{{ $ayah['tanggal_lahir'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Status Hidup</small><span class="fw-bold">{{ $ayah['status_hidup'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Pekerjaan</small><span class="fw-bold">{{ $ayah['pekerjaan'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Alamat</small><span class="fw-bold">{{ $ayah['alamat'] ?? '-' }}</span></div>
-                                    </div>
+                        @if(count($orangTuaRows) > 0)
+                                <div class="table-responsive">
+                                    <table class="table subtable family-subtable">
+                                        <thead>
+                                            <tr>
+                                                <th>Hubungan</th>
+                                                <th>Nama</th>
+                                                <th>NIK</th>
+                                                <th>Tanggal Lahir</th>
+                                                <th>Status Hidup</th>
+                                                <th>Pekerjaan</th>
+                                                <th>Alamat</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($orangTuaRows as $row)
+                                            <tr>
+                                                <td class="fw-semibold">{{ $row['hubungan'] ?? '-' }}</td>
+                                                <td class="fw-bold text-dark">{{ $row['nama'] ?? '-' }}</td>
+                                                <td>{{ $row['nik'] ?? '-' }}</td>
+                                                <td>{{ !empty($row['tanggal_lahir']) ? \Carbon\Carbon::parse($row['tanggal_lahir'])->format('d-m-Y') : '-' }}</td>
+                                                <td>{{ $row['status_hidup'] ?? '-' }}</td>
+                                                <td class="{{ empty($row['pekerjaan']) ? 'text-muted opacity-50' : '' }}">{{ $row['pekerjaan'] ?? '-' }}</td>
+                                                <td>{{ $row['alamat'] ?? '-' }}</td>
+                                            </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
                                 </div>
-                            </div>
-                            <div class="col-lg-6">
-                                <div class="info-card-sm h-100">
-                                    <h6 class="fw-bold mb-3 text-danger">Ibu Kandung</h6>
-                                    <div class="d-grid gap-3">
-                                        <div><small class="text-muted d-block">Nama</small><span class="fw-bold">{{ $ibu['nama'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">NIK</small><span class="fw-bold">{{ $ibu['nik'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Tanggal Lahir</small><span class="fw-bold">{{ $ibu['tanggal_lahir'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Status Hidup</small><span class="fw-bold">{{ $ibu['status_hidup'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Pekerjaan</small><span class="fw-bold">{{ $ibu['pekerjaan'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Alamat</small><span class="fw-bold">{{ $ibu['alamat'] ?? '-' }}</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        @else
+                            <div class="family-empty text-center py-4">Data orang tua tidak ditemukan.</div>
+                        @endif
                     </div>
 
-                    @if(!empty($ayahMertua) || !empty($ibuMertua))
+                    @php
+                        $mertuaRows = [];
+                        if (!empty($ayahMertua['nama'])) {
+                            $mertuaRows[] = array_merge(['hubungan' => 'Ayah Mertua'], $ayahMertua);
+                        }
+                        if (!empty($ibuMertua['nama'])) {
+                            $mertuaRows[] = array_merge(['hubungan' => 'Ibu Mertua'], $ibuMertua);
+                        }
+                    @endphp
+
+                    @if(count($mertuaRows) > 0)
                     <div class="glass-card p-4 mb-4">
                         <h5 class="fw-bold mb-4 text-warning"><i class="bi bi-house-heart-fill me-2"></i> Data Mertua</h5>
-                        <div class="row g-4">
-                            <div class="col-lg-6">
-                                <div class="info-card-sm h-100">
-                                    <h6 class="fw-bold mb-3 text-primary">Ayah Mertua</h6>
-                                    <div class="d-grid gap-3">
-                                        <div><small class="text-muted d-block">Nama</small><span class="fw-bold">{{ $ayahMertua['nama'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">NIK</small><span class="fw-bold">{{ $ayahMertua['nik'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Tanggal Lahir</small><span class="fw-bold">{{ $ayahMertua['tanggal_lahir'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Status Hidup</small><span class="fw-bold">{{ $ayahMertua['status_hidup'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Pekerjaan</small><span class="fw-bold">{{ $ayahMertua['pekerjaan'] ?? '-' }}</span></div>
-                                    </div>
-                                </div>
+                            <div class="table-responsive">
+                                <table class="table subtable family-subtable">
+                                    <thead>
+                                        <tr>
+                                            <th>Hubungan</th>
+                                            <th>Nama</th>
+                                            <th>NIK</th>
+                                            <th>Tanggal Lahir</th>
+                                            <th>Status Hidup</th>
+                                            <th>Pekerjaan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($mertuaRows as $row)
+                                        <tr>
+                                            <td class="fw-semibold">{{ $row['hubungan'] ?? '-' }}</td>
+                                            <td class="fw-bold text-dark">{{ $row['nama'] ?? '-' }}</td>
+                                            <td>{{ $row['nik'] ?? '-' }}</td>
+                                            <td>{{ !empty($row['tanggal_lahir']) ? \Carbon\Carbon::parse($row['tanggal_lahir'])->format('d-m-Y') : '-' }}</td>
+                                            <td>{{ $row['status_hidup'] ?? '-' }}</td>
+                                            <td class="{{ empty($row['pekerjaan']) ? 'text-muted opacity-50' : '' }}">{{ $row['pekerjaan'] ?? '-' }}</td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
                             </div>
-                            <div class="col-lg-6">
-                                <div class="info-card-sm h-100">
-                                    <h6 class="fw-bold mb-3 text-danger">Ibu Mertua</h6>
-                                    <div class="d-grid gap-3">
-                                        <div><small class="text-muted d-block">Nama</small><span class="fw-bold">{{ $ibuMertua['nama'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">NIK</small><span class="fw-bold">{{ $ibuMertua['nik'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Tanggal Lahir</small><span class="fw-bold">{{ $ibuMertua['tanggal_lahir'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Status Hidup</small><span class="fw-bold">{{ $ibuMertua['status_hidup'] ?? '-' }}</span></div>
-                                        <div><small class="text-muted d-block">Pekerjaan</small><span class="fw-bold">{{ $ibuMertua['pekerjaan'] ?? '-' }}</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                     @endif
 
@@ -626,12 +894,13 @@
                         <h5 class="fw-bold mb-4 text-secondary"><i class="bi bi-people me-2"></i> Data Saudara</h5>
                         @if(is_array($saudaraList) && count($saudaraList) > 0)
                             <div class="table-responsive">
-                                <table class="table subtable mb-0">
+                                <table class="table subtable family-subtable">
                                     <thead>
                                         <tr>
                                             <th>Nama</th>
                                             <th>NIK</th>
                                             <th>Jenis Kelamin</th>
+                                            <th>Tempat Lahir</th>
                                             <th>Status Kawin</th>
                                             <th>Status Saudara</th>
                                             <th>Tanggal Lahir</th>
@@ -644,22 +913,29 @@
                                             <td class="fw-bold text-dark">{{ $saudara['nama'] ?? '-' }}</td>
                                             <td>{{ $saudara['nik'] ?? '-' }}</td>
                                             <td>{{ $saudara['jenis_kelamin'] === 'L' ? 'Laki-laki' : ($saudara['jenis_kelamin'] === 'P' ? 'Perempuan' : '-') }}</td>
+                                            <td>{{ $saudara['tempat_lahir'] ?? '-' }}</td>
                                             <td>{{ $saudara['status_kawin'] ?? '-' }}</td>
                                             <td>{{ $saudara['status_saudara'] ?? '-' }}</td>
-                                            <td>{{ $saudara['tanggal_lahir'] ?? '-' }}</td>
-                                            <td>{{ $saudara['pekerjaan'] ?? '-' }}</td>
+                                            <td>{{ !empty($saudara['tanggal_lahir']) ? \Carbon\Carbon::parse($saudara['tanggal_lahir'])->format('d-m-Y') : '-' }}</td>
+                                            <td class="{{ empty($saudara['pekerjaan']) ? 'text-muted opacity-50' : '' }}">{{ $saudara['pekerjaan'] ?? '-' }}</td>
                                         </tr>
                                         @endforeach
                                     </tbody>
                                 </table>
                             </div>
                         @else
-                            <div class="text-center py-4">Data saudara tidak ditemukan.</div>
+                            <div class="family-empty text-center py-4">Data saudara tidak ditemukan.</div>
                         @endif
                     </div>
                 </div>
 
                 <div class="tab-pane fade" id="tab-pendidikan">
+                                        @if($isAdmin)
+                                        <div class="d-flex justify-content-end mb-2">
+                                            @php $isPendLocked = $drhData?->is_locked_pendidikan ?? false; @endphp
+                                            <button class="btn btn-sm {{ $isPendLocked ? 'btn-outline-secondary' : 'btn-outline-danger' }} unlock-drh-btn" data-section="pendidikan" data-locked="{{ $isPendLocked ? 'true' : 'false' }}" title="{{ $isPendLocked ? 'Unlock' : 'Lock' }} Data Pendidikan"><i class="bi bi-{{ $isPendLocked ? 'unlock' : 'lock' }}"></i> {{ $isPendLocked ? 'Unlock' : 'Lock' }} Data Pendidikan</button>
+                                        </div>
+                                        @endif
                     <div class="glass-card p-4 mb-4">
                         <h5 class="fw-bold mb-4 text-primary"><i class="bi bi-mortarboard-fill me-2"></i> Riwayat Pendidikan Formal</h5>
                         @php $pendidikanList = $drhData->riwayat_pendidikan ?? []; @endphp
@@ -687,9 +963,6 @@
                                             @if(!empty($pend['file']))
                                                 <a href="{{ asset('storage/'.$pend['file']) }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-pdf"></i></a>
                                             @endif
-                                            @if(!empty($pend['id']))
-                                                <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deletePendidikanFile({{ $pend['id'] ?? $pend['id_pendidikan'] ?? 0 }}, this)"><i class="bi bi-trash"></i></button>
-                                            @endif
                                         </td>
                                     </tr>
                                     @empty
@@ -704,6 +977,12 @@
                 </div>
 
                 <div class="tab-pane fade" id="tab-diklat">
+                                        @if($isAdmin)
+                                        <div class="d-flex justify-content-end mb-2">
+                                            @php $isDiklatLocked = $drhData?->is_locked_diklat ?? false; @endphp
+                                            <button class="btn btn-sm {{ $isDiklatLocked ? 'btn-outline-secondary' : 'btn-outline-danger' }} unlock-drh-btn" data-section="diklat" data-locked="{{ $isDiklatLocked ? 'true' : 'false' }}" title="{{ $isDiklatLocked ? 'Unlock' : 'Lock' }} Data Diklat"><i class="bi bi-{{ $isDiklatLocked ? 'unlock' : 'lock' }}"></i> {{ $isDiklatLocked ? 'Unlock' : 'Lock' }} Data Diklat</button>
+                                        </div>
+                                        @endif
                     <div class="glass-card p-4">
                         <h5 class="fw-bold mb-4 text-info"><i class="bi bi-journal-richtext me-2"></i> Riwayat Diklat</h5>
                         @php $diklatList = $drhData->riwayat_diklat ?? []; @endphp
@@ -729,9 +1008,6 @@
                                             @if(!empty($diklat['file']))
                                                 <a href="{{ asset('storage/'.$diklat['file']) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark-pdf"></i></a>
                                             @endif
-                                            @if(!empty($diklat['id']))
-                                                <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deleteDiklatFile({{ $diklat['id'] ?? $diklat['id_diklat'] ?? 0 }}, this)"><i class="bi bi-trash"></i></button>
-                                            @endif
                                         </td>
                                     </tr>
                                     @empty
@@ -746,6 +1022,12 @@
                 </div>
 
                 <div class="tab-pane fade" id="tab-karir">
+                                        @if($isAdmin)
+                                        <div class="d-flex justify-content-end mb-2">
+                                            @php $isJabLocked = $drhData?->is_locked_jabatan ?? false; @endphp
+                                            <button class="btn btn-sm {{ $isJabLocked ? 'btn-outline-secondary' : 'btn-outline-danger' }} unlock-drh-btn" data-section="jabatan" data-locked="{{ $isJabLocked ? 'true' : 'false' }}" title="{{ $isJabLocked ? 'Unlock' : 'Lock' }} Data Jabatan"><i class="bi bi-{{ $isJabLocked ? 'unlock' : 'lock' }}"></i> {{ $isJabLocked ? 'Unlock' : 'Lock' }} Data Jabatan</button>
+                                        </div>
+                                        @endif
                     <div class="glass-card p-4">
                         <h5 class="fw-bold mb-4 text-warning"><i class="bi bi-briefcase-fill me-2"></i> Riwayat Jabatan & Kepangkatan</h5>
                         @php $jabatanList = $drhData->riwayat_jabatan ?? []; @endphp
@@ -758,7 +1040,7 @@
                                         <th>Eselon</th>
                                         <th>TMT</th>
                                         <th>No. SK</th>
-                                        <th>Aksi</th>
+                                        <th>File</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -772,8 +1054,9 @@
                                         <td>
                                             @if(!empty($jab['file']))
                                                 <a href="{{ asset('storage/'.$jab['file']) }}" target="_blank" class="btn btn-sm btn-light">SK</a>
+                                            @else
+                                                <span class="text-muted small">-</span>
                                             @endif
-                                            <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deleteJabatanFile({{ $jab['id'] ?? $jab['id_jabatan'] ?? 0 }}, this)"><i class="bi bi-trash"></i></button>
                                         </td>
                                     </tr>
                                     @empty
@@ -788,6 +1071,12 @@
                 </div>
 
                 <div class="tab-pane fade" id="tab-penghargaan">
+                                        @if($isAdmin)
+                                        <div class="d-flex justify-content-end mb-2">
+                                            @php $isAwrdLocked = $drhData?->is_locked_penghargaan ?? false; @endphp
+                                            <button class="btn btn-sm {{ $isAwrdLocked ? 'btn-outline-secondary' : 'btn-outline-danger' }} unlock-drh-btn" data-section="penghargaan" data-locked="{{ $isAwrdLocked ? 'true' : 'false' }}" title="{{ $isAwrdLocked ? 'Unlock' : 'Lock' }} Data Penghargaan"><i class="bi bi-{{ $isAwrdLocked ? 'unlock' : 'lock' }}"></i> {{ $isAwrdLocked ? 'Unlock' : 'Lock' }} Data Penghargaan</button>
+                                        </div>
+                                        @endif
                     <div class="glass-card p-4">
                         <h5 class="fw-bold mb-4 text-danger"><i class="bi bi-award-fill me-2"></i> Riwayat Penghargaan</h5>
                         @php $penghargaanList = $drhData->riwayat_penghargaan ?? []; @endphp
@@ -825,6 +1114,12 @@
                 </div>
 
                 <div class="tab-pane fade" id="tab-sertifikasi">
+                                        @if($isAdmin)
+                                        <div class="d-flex justify-content-end mb-2">
+                                            @php $isSrtfLocked = $drhData?->is_locked_sertifikasi ?? false; @endphp
+                                            <button class="btn btn-sm {{ $isSrtfLocked ? 'btn-outline-secondary' : 'btn-outline-danger' }} unlock-drh-btn" data-section="sertifikasi" data-locked="{{ $isSrtfLocked ? 'true' : 'false' }}" title="{{ $isSrtfLocked ? 'Unlock' : 'Lock' }} Data Sertifikasi"><i class="bi bi-{{ $isSrtfLocked ? 'unlock' : 'lock' }}"></i> {{ $isSrtfLocked ? 'Unlock' : 'Lock' }} Data Sertifikasi</button>
+                                        </div>
+                                        @endif
                     <div class="glass-card p-4">
                         <h5 class="fw-bold mb-4 text-success"><i class="bi bi-patch-check-fill me-2"></i> Riwayat Sertifikasi</h5>
                         @php $sertifikasiList = $drhData->riwayat_sertifikasi ?? []; @endphp
@@ -848,9 +1143,6 @@
                                             @if(!empty($sertifikasi['file']))
                                                 <a href="{{ asset('storage/'.$sertifikasi['file']) }}" target="_blank" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-pdf"></i></a>
                                             @endif
-                                            @if(!empty($sertifikasi['id']))
-                                                <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deleteSertifikasiFile({{ $sertifikasi['id'] ?? $sertifikasi['id_sertifikasi'] ?? 0 }}, this)"><i class="bi bi-trash"></i></button>
-                                            @endif
                                         </td>
                                     </tr>
                                     @empty
@@ -865,6 +1157,12 @@
                 </div>
 
                 <div class="tab-pane fade" id="tab-dokumen">
+                                        @if($isAdmin)
+                                        <div class="d-flex justify-content-end mb-2">
+                                            @php $isLegalLocked = $drhData?->identitasLegal?->is_locked_legal ?? false; @endphp
+                                            <button class="btn btn-sm {{ $isLegalLocked ? 'btn-outline-secondary' : 'btn-outline-danger' }} unlock-drh-btn" data-section="dokumen" data-locked="{{ $isLegalLocked ? 'true' : 'false' }}" title="Unlock Data Legalitas"><i class="bi bi-unlock"></i> Unlock Data Legalitas</button>
+                                        </div>
+                                        @endif
                     <div class="glass-card p-4">
                         <h5 class="fw-bold mb-4 text-success"><i class="bi bi-shield-lock-fill me-2"></i> Vault Dokumen Legalitas</h5>
                         @php
@@ -886,6 +1184,15 @@
                                         <div class="bg-light p-3 rounded-4 me-3 text-success shadow-sm"><i class="bi bi-{{ $doc['icon'] }} fs-4"></i></div>
                                         <div>
                                             <div class="fw-bold text-dark">{{ $doc['label'] }}</div>
+                                            @if($doc['type'] === 'ktp')
+                                                <div class="small text-muted">Nomor: <span class="fw-semibold text-dark">{{ $drhData?->identitas_legal['nik_ktp'] ?? '-' }}</span></div>
+                                            @elseif($doc['type'] === 'npwp')
+                                                <div class="small text-muted">Nomor: <span class="fw-semibold text-dark">{{ $drhData?->identitas_legal['nomor_npwp'] ?? '-' }}</span></div>
+                                            @elseif($doc['type'] === 'bpjs')
+                                                <div class="small text-muted">Nomor: <span class="fw-semibold text-dark">{{ $drhData?->identitas_legal['nomor_bpjs'] ?? '-' }}</span></div>
+                                            @elseif($doc['type'] === 'kk')
+                                                <div class="small text-muted">Nomor: <span class="fw-semibold text-dark">{{ $drhData?->identitas_legal['nomor_kk'] ?? '-' }}</span></div>
+                                            @endif
                                             <span class="small {{ $doc['path'] ? 'text-success' : 'text-danger' }} d-flex align-items-center">
                                                 <i class="bi bi-{{ $doc['path'] ? 'check-circle-fill' : 'exclamation-circle' }} me-1"></i>
                                                 {{ $doc['path'] ? 'Tersedia di Server' : 'Belum Diunggah' }}
@@ -896,7 +1203,17 @@
                                     <div class="dropdown">
                                         <button class="btn btn-white border-0 p-2" data-bs-toggle="dropdown"><i class="bi bi-three-dots-vertical"></i></button>
                                         <ul class="dropdown-menu dropdown-menu-end shadow border-0 p-2 rounded-3">
-                                            <li><a class="dropdown-item rounded-2" href="{{ $isAdmin ? url('/admin/drh/legal/'.$user->id.'/'.$doc['type'].'/view') : url('/profile/drh/file/'.$doc['type'].'/view') }}" target="_blank"><i class="bi bi-eye me-2"></i> Lihat</a></li>
+                                            @php
+                                                // Tambahkan cache-busting agar file terbaru selalu diambil
+                                                $fileViewUrl = $isAdmin
+                                                    ? url('/admin/drh/legal/'.$user->id.'/'.$doc['type'].'/view')
+                                                    : url('/profile/drh/file/'.$doc['type'].'/view');
+                                                if ($doc['path']) {
+                                                    $fullPath = public_path('storage/' . $doc['path']);
+                                                    $fileViewUrl .= '?t=' . (is_file($fullPath) ? filemtime($fullPath) : time());
+                                                }
+                                            @endphp
+                                            <li><a class="dropdown-item rounded-2" href="{{ $fileViewUrl }}" target="_blank"><i class="bi bi-eye me-2"></i> Lihat</a></li>
                                             <li><a class="dropdown-item rounded-2" href="{{ $isAdmin ? url('/admin/drh/legal/'.$user->id.'/'.$doc['type'].'/download') : url('/profile/drh/file/'.$doc['type'].'/download') }}"><i class="bi bi-download me-2"></i> Unduh</a></li>
                                         </ul>
                                     </div>
@@ -964,141 +1281,15 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        var triggerTabList = [].slice.call(document.querySelectorAll('#pills-tab button'))
+        var triggerTabList = [].slice.call(document.querySelectorAll('#pills-tab button'));
         triggerTabList.forEach(function (triggerEl) {
-            var tabTrigger = new bootstrap.Tab(triggerEl)
+            var tabTrigger = new bootstrap.Tab(triggerEl);
             triggerEl.addEventListener('click', function (event) {
-                event.preventDefault()
-                tabTrigger.show()
-            })
-        })
+                event.preventDefault();
+                tabTrigger.show();
+            });
+        });
     });
-</script>
-<script>
-function deleteDiklatFile(id, el) {
-    Swal.fire({
-        title: 'Hapus File Dokumen?',
-        text: 'File dokumen akan dihapus dari server, data diklat tetap ada.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Ya, Hapus!',
-        cancelButtonText: 'Batal',
-        reverseButtons: true
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/pegawai/diklat/${id}/dokumen`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    Swal.fire('Berhasil', data.message, 'success');
-                    el.closest('td').innerHTML = '<span class="text-muted small">-</span>';
-                } else {
-                    Swal.fire('Gagal', data.message || 'Gagal menghapus dokumen', 'error');
-                }
-            })
-            .catch(() => Swal.fire('Gagal', 'Terjadi kesalahan', 'error'));
-        }
-    });
-}
-function deleteJabatanFile(id, el) {
-    Swal.fire({
-        title: 'Hapus File Dokumen?',
-        text: 'File dokumen akan dihapus dari server, data jabatan tetap ada.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Ya, Hapus!',
-        cancelButtonText: 'Batal',
-        reverseButtons: true
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/pegawai/jabatan/${id}/dokumen`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    Swal.fire('Berhasil', data.message, 'success');
-                    el.closest('td').innerHTML = '<span class="text-muted small">-</span>';
-                } else {
-                    Swal.fire('Gagal', data.message || 'Gagal menghapus dokumen', 'error');
-                }
-            })
-            .catch(() => Swal.fire('Gagal', 'Terjadi kesalahan', 'error'));
-        }
-    });
-}
-function deletePenghargaanFile(id, el) {
-    Swal.fire({
-        title: 'Hapus File Dokumen?',
-        text: 'File dokumen akan dihapus dari server, data penghargaan tetap ada.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Ya, Hapus!',
-        cancelButtonText: 'Batal',
-        reverseButtons: true
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/pegawai/penghargaan/${id}/dokumen`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    Swal.fire('Berhasil', data.message, 'success');
-                    el.closest('td').innerHTML = '<span class="text-muted small">-</span>';
-                } else {
-                    Swal.fire('Gagal', data.message || 'Gagal menghapus dokumen', 'error');
-                }
-            })
-            .catch(() => Swal.fire('Gagal', 'Terjadi kesalahan', 'error'));
-        }
-    });
-}
-function deleteSertifikasiFile(id, el) {
-    Swal.fire({
-        title: 'Hapus File Dokumen?',
-        text: 'File dokumen akan dihapus dari server, data sertifikasi tetap ada.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Ya, Hapus!',
-        cancelButtonText: 'Batal',
-        reverseButtons: true
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/pegawai/sertifikasi/${id}/dokumen`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    Swal.fire('Berhasil', data.message, 'success');
-                    el.closest('td').innerHTML = '<span class="text-muted small">-</span>';
-                } else {
-                    Swal.fire('Gagal', data.message || 'Gagal menghapus dokumen', 'error');
-                }
-            })
-            .catch(() => Swal.fire('Gagal', 'Terjadi kesalahan', 'error'));
-        }
-    });
-}
 </script>
 </body>
 </html>

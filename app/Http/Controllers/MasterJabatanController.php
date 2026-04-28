@@ -10,19 +10,33 @@ class MasterJabatanController extends Controller
 {
     public function index()
     {
-        // withCount: hitung total ASN per jabatan
-        // with pegawais: load daftar ASN untuk modal detail
         $jabatans = Jabatan::withCount('pegawais')
-            ->with(['pegawais' => function ($q) {
-                $q->with('user:id,pegawai_id')
-                  ->orderBy('nama_lengkap')
-                  ->select(['id', 'nama_lengkap', 'nama_jabatan', 'status_pegawai', 'eselon_jabatan']);
-            }])
             ->orderBy('jenis_asn')
             ->orderBy('nama_jabatan')
             ->get();
 
         return view('dashboard.master.jabatan', compact('jabatans'));
+    }
+
+    public function showAsn($id)
+    {
+        $jabatan = Jabatan::withCount('pegawais')
+            ->with(['pegawais' => function ($q) {
+                $q->with('user:id,pegawai_id,name')
+                    ->orderBy('nama_lengkap')
+                    ->select(['id', 'nama_lengkap', 'nama_jabatan', 'status_pegawai', 'eselon_jabatan', 'foto_profil']);
+            }])
+            ->findOrFail($id);
+
+        return view('dashboard.master.asn_detail', [
+            'backUrl' => url('/admin/master/jabatan'),
+            'heading' => 'Detail ASN Jabatan',
+            'subHeading' => 'Daftar ASN dengan jabatan ' . $jabatan->nama_jabatan,
+            'referenceName' => $jabatan->nama_jabatan,
+            'referenceType' => 'Jabatan',
+            'asnCount' => $jabatan->pegawais_count,
+            'asns' => $jabatan->pegawais,
+        ]);
     }
 
     public function store(Request $request)

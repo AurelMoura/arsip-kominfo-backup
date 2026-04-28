@@ -29,6 +29,37 @@ class MasterPendidikanController extends Controller
         return view('dashboard.master.pendidikan', compact('pendidikans'));
     }
 
+    public function showAsn($id)
+    {
+        $pendidikan = Pendidikan::withCount(['riwayat_pendidikan as pegawais_count' => function ($q) {
+            $q->distinct('pegawai_id');
+        }])
+            ->with(['riwayat_pendidikan' => function ($q) {
+                $q->with(['pegawai' => function ($pq) {
+                    $pq->with('user:id,pegawai_id')
+                        ->select(['id', 'nama_lengkap', 'status_pegawai', 'foto_profil']);
+                }]);
+            }])
+            ->findOrFail($id);
+
+        $asns = $pendidikan->riwayat_pendidikan
+            ->map(fn($rp) => $rp->pegawai)
+            ->filter()
+            ->unique('id')
+            ->sortBy('nama_lengkap')
+            ->values();
+
+        return view('dashboard.master.asn_detail', [
+            'backUrl' => url('/admin/master/pendidikan'),
+            'heading' => 'Detail ASN Pendidikan',
+            'subHeading' => 'Daftar ASN dengan jenjang pendidikan ' . $pendidikan->nama,
+            'referenceName' => $pendidikan->nama,
+            'referenceType' => 'Pendidikan',
+            'asnCount' => $asns->count(),
+            'asns' => $asns,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $request->validate(['nama' => 'required|string|max:255']);

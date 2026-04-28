@@ -105,10 +105,13 @@
             padding: 30px; 
         }
 
-        @media (max-width: 991px) {
-            .sidebar { width: 80px; }
-            .sidebar .ms-3, .sidebar .text-truncate, .sidebar span, .sidebar small, .sidebar .ms-auto { display: none; }
-            .main-content { margin-left: 80px; padding: 25px; }
+        @media (max-width: 991.98px) {
+            .main-content { padding: 16px !important; padding-top: calc(56px + 16px) !important; }
+            .d-flex.justify-content-between { flex-wrap: wrap !important; gap: 12px !important; }
+        }
+        @media (max-width: 575.98px) {
+            .main-content { padding: 12px !important; padding-top: calc(56px + 12px) !important; }
+            h1 { font-size: 1.5rem !important; }
         }
     </style>
 @endpush
@@ -145,8 +148,8 @@
             <div class="stat-card d-flex align-items-center">
                 <div class="bg-warning bg-opacity-10 text-warning p-3 rounded-4 me-4 shadow-sm"><i class="bi bi-hourglass-split fs-2"></i></div>
                 <div>
-                    <h3 class="fw-bold mb-0" style="font-size: 28px;">0</h3>
-                    <small class="text-muted fw-bold text-uppercase" style="font-size: 11px; letter-spacing: 0.5px;">Pengajuan Aktif</small>
+                    <h3 class="fw-bold mb-0" style="font-size: 28px;">{{ $menungguCount ?? 0 }}</h3>
+                    <small class="text-muted fw-bold text-uppercase" style="font-size: 11px; letter-spacing: 0.5px;">Total Menunggu Validasi</small>
                 </div>
             </div>
         </div>
